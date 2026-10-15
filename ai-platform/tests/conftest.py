@@ -1,15 +1,11 @@
 """Isolated relational fixtures for API tests."""
 
-import os
 import time
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-
-os.environ["ENVIRONMENT"] = "test"
-os.environ["JWT_SECRET"] = "test-only-secret-for-local-token-tests"
 
 from apps.control_api.main import app
 from apps.control_api.dependencies import get_agentgateway_kubernetes_client
@@ -21,6 +17,7 @@ from shared.authorization.roles import Role
 @pytest.fixture
 def api_client(tmp_path, monkeypatch):
     monkeypatch.setenv("ENVIRONMENT", "test")
+    monkeypatch.setenv("JWT_SECRET", "test-only-secret-for-local-token-tests")
     engine = create_engine(
         f"sqlite:///{tmp_path / 'control-plane-test.db'}",
         connect_args={"check_same_thread": False},

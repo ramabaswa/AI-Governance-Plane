@@ -142,7 +142,6 @@ def apply_route(
     if row is None:
         raise ResourceNotFoundError("Gateway route", route_id)
 
-    route = GatewayRoute.model_validate(row, from_attributes=True)
     model_rows = session.scalars(
         select(ModelBackendRecord).where(
             ModelBackendRecord.tenant_id == tenant_id,
@@ -153,6 +152,7 @@ def apply_route(
     row.lifecycle_state = "pending"
     row.updated_at = int(time.time())
     row.revision_id += 1
+    route = GatewayRoute.model_validate(row, from_attributes=True)
     append_event(
         session,
         tenant_id=tenant_id,
@@ -204,17 +204,26 @@ def get_route_status(
     ).all()
     models = {model.id: ModelBackend.model_validate(model, from_attributes=True) for model in model_rows}
     status = (reconciler or AgentgatewayReconciler()).read_status(route, models)
-    if status["observed_active"] and row.lifecycle_state != "observed_active":
-        row.lifecycle_state = "observed_active"
+    if row.lifecycle_state != status["state"]:
+        previous_state = row.lifecycle_state
+        row.lifecycle_state = status["state"]
         row.updated_at = int(time.time())
         append_event(
             session,
             tenant_id=tenant_id,
             actor="agentgateway-controller-status",
-            action=AuditAction.ROUTE_OBSERVED_ACTIVE,
+            action=(
+                AuditAction.ROUTE_OBSERVED_ACTIVE
+                if status["observed_active"]
+                else AuditAction.ROUTE_STATUS_CHANGED
+            ),
             resource_type="gateway_route",
             resource_id=route_id,
-            details={"resources": status["resources"]},
+            details={
+                "from": previous_state,
+                "to": status["state"],
+                "resources": status["resources"],
+            },
         )
         session.flush()
     return {"route_id": route_id, **status}

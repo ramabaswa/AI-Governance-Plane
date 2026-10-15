@@ -113,15 +113,35 @@ def test_reconciler_reports_only_controller_observed_status():
     assert len(api.resources) == 3
 
 
-def test_reconciler_keeps_resource_pending_until_controller_accepts():
+def test_reconciler_surfaces_controller_rejection():
     api = FakeCustomObjectsApi(accepted=False)
     reconciler = AgentgatewayReconciler(AgentgatewayKubernetesClient(api, FakeCoreApi()))
     models = {"model-test": _model()}
 
     reconciler.apply([_route()], models)
     status = reconciler.read_status(_route(), models)
+    assert status["state"] == "rejected"
+    assert status["observed_active"] is False
+
+
+def test_reconciler_keeps_stale_route_revision_pending():
+    api = FakeCustomObjectsApi(accepted=True)
+    reconciler = AgentgatewayReconciler(AgentgatewayKubernetesClient(api, FakeCoreApi()))
+    models = {"model-test": _model()}
+
+    reconciler.apply([_route()], models)
+    for resource in api.resources.values():
+        if resource["kind"] in {"HTTPRoute", "AgentgatewayPolicy"}:
+            resource["metadata"]["labels"]["governance-plane.io/revision"] = "0"
+
+    status = reconciler.read_status(_route(), models)
     assert status["state"] == "pending"
     assert status["observed_active"] is False
+    assert all(
+        item["state"] == "pending"
+        for item in status["resources"]
+        if item["kind"] in {"HTTPRoute", "AgentgatewayPolicy"}
+    )
 
 
 def test_reconciler_surfaces_partial_apply_conflicts():

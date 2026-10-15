@@ -16,7 +16,10 @@ validated in a running environment.
 ## Route apply pending or failed
 
 1. Inspect the route through the tenant-authorized routes API and review the
-   returned state and resource conditions.
+   returned state and resource conditions. `pending` means a resource is
+   missing, required conditions are absent, or a route resource's revision
+   label is stale; `rejected` means the controller reported `Accepted=False`
+   or `ResolvedRefs=False`.
 2. Confirm Kubernetes API connectivity, namespace-scoped permissions, and
    the presence/version of the Gateway API and agentgateway CRDs.
 3. Inspect the exact managed Kubernetes resources and controller conditions

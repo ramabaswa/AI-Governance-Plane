@@ -74,6 +74,7 @@ def test_oidc_verification_rejects_invalid_signature(monkeypatch):
 def test_local_token_signing_requires_explicit_secret(monkeypatch):
     from shared.authorization.jwt_handler import create_access_token
 
+    monkeypatch.setenv("ENVIRONMENT", "development")
     monkeypatch.delenv("JWT_SECRET", raising=False)
     with pytest.raises(RuntimeError, match="JWT_SECRET must be configured"):
         create_access_token("user-1", "tenant-1", [])

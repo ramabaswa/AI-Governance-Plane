@@ -71,8 +71,10 @@ def test_translator_generates_backend_route_and_guard_policy_crds():
     assert route["apiVersion"] == "gateway.networking.k8s.io/v1"
     assert route["spec"]["rules"][0]["backendRefs"][0]["weight"] == 100
     assert "port" not in route["spec"]["rules"][0]["backendRefs"][0]
+    assert route["metadata"]["labels"]["governance-plane.io/revision"] == "1"
 
     policy = by_kind["AgentgatewayPolicy"]
+    assert policy["metadata"]["labels"]["governance-plane.io/revision"] == "1"
     assert policy["spec"]["targetRefs"][0]["name"] == route["metadata"]["name"]
     assert policy["spec"]["traffic"]["apiKeyAuthentication"]["mode"] == "Strict"
     expressions = policy["spec"]["traffic"]["authorization"]["policy"]["matchExpressions"]

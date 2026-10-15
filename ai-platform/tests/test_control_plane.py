@@ -2,11 +2,15 @@
 
 import json
 
+from sqlalchemy import select
+
 from shared.authorization.jwt_handler import create_access_token
 from shared.authorization.roles import Role
 from shared.contracts.audit import AuditAction
 from features.audit_evidence.service import list_events, verify_chain
-from features.persistence import AuditEventRecord
+from features.gateway_traffic import service as route_service
+from features.persistence import AuditEventRecord, GatewayRouteRecord
+from shared.errors.exceptions import GatewayReconciliationError
 
 
 def auth_headers(tenant_id="tenant-acme", subject="admin@acme.internal", claimed_role=Role.VIEWER):
@@ -123,6 +127,97 @@ def test_key_revocation_updates_the_desired_key_catalog(api_client):
     assert configmap["data"] == {}
 
 
+def test_key_revocation_can_retry_failed_catalog_update(api_client):
+    client, _ = api_client
+    headers = auth_headers(subject="dev@acme.internal")
+    created = client.post(
+        "/api/v1/applications",
+        headers=headers,
+        json={"name": "retry-revocation-app", "environment": "development"},
+    )
+    app_id = created.json()["data"]["application"]["id"]
+    kubernetes_client = client.app.state.test_kubernetes_client
+    apply_resources = kubernetes_client.apply
+    attempts = 0
+
+    def fail_once(resources):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise GatewayReconciliationError("temporary ConfigMap update failure")
+        apply_resources(resources)
+
+    kubernetes_client.apply = fail_once
+    first_attempt = client.post(
+        f"/api/v1/applications/{app_id}/keys/revoke",
+        headers=headers,
+    )
+    assert first_attempt.status_code == 502
+    assert client.get(
+        f"/api/v1/applications/{app_id}/keys",
+        headers=headers,
+    ).json()[0]["provisioning_state"] == "revocation_pending"
+
+    retry = client.post(
+        f"/api/v1/applications/{app_id}/keys/revoke",
+        headers=headers,
+    )
+    assert retry.status_code == 200
+    assert client.get(
+        f"/api/v1/applications/{app_id}/keys",
+        headers=headers,
+    ).json()[0]["provisioning_state"] == "revocation_submitted"
+
+    duplicate = client.post(
+        f"/api/v1/applications/{app_id}/keys/revoke",
+        headers=headers,
+    )
+    assert duplicate.status_code == 404
+    assert attempts == 2
+
+
+def test_failed_key_provisioning_reports_cleanup_failure_and_can_be_retried(api_client):
+    client, _ = api_client
+    headers = auth_headers(subject="dev@acme.internal")
+    kubernetes_client = client.app.state.test_kubernetes_client
+    apply_resources = kubernetes_client.apply
+    attempts = 0
+
+    def fail_provisioning_and_cleanup(resources):
+        nonlocal attempts
+        attempts += 1
+        if attempts <= 2:
+            raise GatewayReconciliationError("temporary ConfigMap update failure")
+        apply_resources(resources)
+
+    kubernetes_client.apply = fail_provisioning_and_cleanup
+    created = client.post(
+        "/api/v1/applications",
+        headers=headers,
+        json={"name": "failed-provisioning-app", "environment": "development"},
+    )
+    assert created.status_code == 502
+    assert created.json()["error"]["details"][0]["credential_cleanup_failed"] is True
+    app_id = client.get("/api/v1/applications", headers=headers).json()[0]["id"]
+    key_status = client.get(
+        f"/api/v1/applications/{app_id}/keys",
+        headers=headers,
+    ).json()[0]
+    assert key_status["is_revoked"] is True
+    assert key_status["provisioning_state"] == "failed"
+
+    retry = client.post(
+        f"/api/v1/applications/{app_id}/keys/revoke",
+        headers=headers,
+    )
+    assert retry.status_code == 200
+    assert client.get(
+        f"/api/v1/applications/{app_id}/keys",
+        headers=headers,
+    ).json()[0]["provisioning_state"] == "revocation_submitted"
+    assert attempts == 3
+
+
 def test_production_application_cannot_skip_approval(api_client):
     client, _ = api_client
     headers = auth_headers()
@@ -183,6 +278,62 @@ def test_duplicate_route_conflicts_and_validation_only_emits_candidate_resources
     assert "AgentgatewayBackend" in result["kubernetes_crds"]
     assert "AgentgatewayPolicy" in result["kubernetes_crds"]
     assert "observed_active" not in result["status"]
+
+
+def test_route_status_transitions_replace_stale_observed_state(api_client):
+    client, sessions = api_client
+    headers = auth_headers()
+    created = client.post(
+        "/api/v1/routes",
+        headers=headers,
+        json={
+            "name": "status-route",
+            "path_prefix": "/v1/status-route",
+            "backend_model_id": "model-claude-35",
+        },
+    )
+    route_id = created.json()["id"]
+
+    class StatusReconciler:
+        state = "observed_active"
+
+        def read_status(self, _route, _models):
+            return {
+                "state": self.state,
+                "observed_active": self.state == "observed_active",
+                "resources": [],
+            }
+
+    reconciler = StatusReconciler()
+    with sessions.begin() as session:
+        active = route_service.get_route_status(
+            session,
+            tenant_id="tenant-acme",
+            route_id=route_id,
+            reconciler=reconciler,
+        )
+        assert active["state"] == "observed_active"
+
+    reconciler.state = "pending"
+    with sessions.begin() as session:
+        pending = route_service.get_route_status(
+            session,
+            tenant_id="tenant-acme",
+            route_id=route_id,
+            reconciler=reconciler,
+        )
+        assert pending["state"] == "pending"
+
+    with sessions() as session:
+        route = session.get(GatewayRouteRecord, route_id)
+        assert route.lifecycle_state == "pending"
+        actions = set(session.scalars(
+            select(AuditEventRecord.action).where(
+                AuditEventRecord.resource_id == route_id,
+            )
+        ).all())
+        assert AuditAction.ROUTE_OBSERVED_ACTIVE.value in actions
+        assert AuditAction.ROUTE_STATUS_CHANGED.value in actions
 
 
 def test_audit_read_is_chained_and_itself_audited(api_client):

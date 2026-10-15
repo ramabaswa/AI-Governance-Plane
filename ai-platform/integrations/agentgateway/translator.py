@@ -146,6 +146,7 @@ class AgentgatewayDeclarativeTranslator:
                     "labels": {
                         "app.kubernetes.io/managed-by": "ai-governance-plane",
                         "governance-plane.io/tenant": tenant_fingerprint(route.tenant_id),
+                        "governance-plane.io/revision": str(route.revision_id),
                     },
                 },
                 "spec": {
@@ -185,6 +186,7 @@ class AgentgatewayDeclarativeTranslator:
                     "labels": {
                         "app.kubernetes.io/managed-by": "ai-governance-plane",
                         "governance-plane.io/tenant": tenant_fingerprint(route.tenant_id),
+                        "governance-plane.io/revision": str(route.revision_id),
                     },
                 },
                 "spec": {

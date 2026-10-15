@@ -92,7 +92,7 @@ sequenceDiagram
     Admin->>UI: Submit route/model intent
     UI->>API: Versioned, tenant-authorized request
     API->>Store: Record user action and audit event
-    API->>API: Validate inputs and synthesize pinned CRD shape
+    API->>API: Validate inputs, increment revision and synthesize pinned CRD shape
     API->>Kube: Create/update Gateway API and agentgateway resources
     Kube-->>API: Write accepted or error
     API-->>UI: Pending controller observation (not active success)
@@ -101,16 +101,22 @@ sequenceDiagram
     Agw->>Kube: Publish resource status/conditions
     API->>Kube: Read observed status
 
-    alt Controller reports accepted and programmed
+    alt Current revision is accepted and route references are resolved
         API->>Store: Record observed result and audit evidence
         API-->>UI: Observed active
-    else Rejected, stale, or unavailable
+    else Rejected, stale revision, or unavailable
         API->>Store: Record explicit failure or pending evidence
         API-->>UI: Failed or still pending - retain diagnostic correlation
     end
 ```
 
-Status names in this diagram are conceptual until mapped to the exact v1.6.0 resource conditions. A write acknowledgement is not an observation. This path deliberately excludes a second GitOps writer and the existing unverified direct `/config/apply` HTTP assumption.
+The source maps `Accepted=True` on all generated resources and
+`ResolvedRefs=True` on the `HTTPRoute` to `observed_active`; a false
+`Accepted`/`ResolvedRefs` condition maps to `rejected`, and absent conditions or
+a stale route revision remain `pending`. A write acknowledgement is not an
+observation. Live v1.6.0 CRD compatibility and controller condition behavior
+remain unverified. This path deliberately excludes a second GitOps writer and
+the existing unverified direct `/config/apply` HTTP assumption.
 
 ## Ownership summary
 

@@ -191,11 +191,11 @@ def revoke_application_keys(
             VirtualKeyRecord.tenant_id == tenant_id,
             VirtualKeyRecord.application_id == app_id,
             (VirtualKeyRecord.is_revoked.is_(False))
-            | (VirtualKeyRecord.provisioning_state.in_(["revocation_pending", "revocation_submitted"])),
+            | (VirtualKeyRecord.provisioning_state.in_(["failed", "revocation_pending"])),
         )
     ).all()
     if not keys:
-        raise ResourceNotFoundError("Active application credential", app_id)
+        raise ResourceNotFoundError("Revocable application credential", app_id)
     for key in keys:
         key.is_revoked = True
         key.provisioning_state = "revocation_pending"
@@ -254,7 +254,8 @@ def update_application_lifecycle(
             select(VirtualKeyRecord).where(
                 VirtualKeyRecord.tenant_id == tenant_id,
                 VirtualKeyRecord.application_id == app_id,
-                VirtualKeyRecord.is_revoked.is_(False),
+                (VirtualKeyRecord.is_revoked.is_(False))
+                | (VirtualKeyRecord.provisioning_state.in_(["failed", "revocation_pending"])),
             )
         ).all()
         for key in keys:

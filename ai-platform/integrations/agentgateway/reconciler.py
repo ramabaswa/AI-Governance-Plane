@@ -73,7 +73,23 @@ class AgentgatewayReconciler:
             conditions = _condition_records(observed, desired["kind"])
             accepted = [condition for condition in conditions if condition.get("type") == "Accepted"]
             resolved = [condition for condition in conditions if condition.get("type") == "ResolvedRefs"]
-            ready = bool(accepted) and all(condition.get("status") == "True" for condition in accepted)
+            labels = desired["metadata"].get("labels", {})
+            observed_labels = observed.get("metadata", {}).get("labels", {})
+            revision_matches = (
+                desired["kind"] not in {"HTTPRoute", "AgentgatewayPolicy"}
+                or observed_labels.get("governance-plane.io/revision")
+                == labels.get("governance-plane.io/revision")
+            )
+            rejected = any(
+                condition.get("type") in {"Accepted", "ResolvedRefs"}
+                and condition.get("status") == "False"
+                for condition in conditions
+            )
+            ready = (
+                revision_matches
+                and bool(accepted)
+                and all(condition.get("status") == "True" for condition in accepted)
+            )
             if desired["kind"] == "HTTPRoute":
                 ready = ready and bool(resolved) and all(
                     condition.get("status") == "True" for condition in resolved
@@ -81,7 +97,7 @@ class AgentgatewayReconciler:
             observations.append({
                 "kind": desired["kind"],
                 "name": desired["metadata"]["name"],
-                "state": "accepted" if ready else "pending",
+                "state": "accepted" if ready else "rejected" if rejected else "pending",
                 "conditions": [
                     {
                         "type": condition.get("type"),
@@ -93,8 +109,9 @@ class AgentgatewayReconciler:
             })
 
         active = bool(observations) and all(item["state"] == "accepted" for item in observations)
+        rejected = any(item["state"] == "rejected" for item in observations)
         return {
-            "state": "observed_active" if active else "pending",
+            "state": "observed_active" if active else "rejected" if rejected else "pending",
             "observed_active": active,
             "resources": observations,
         }
