@@ -77,7 +77,7 @@ sequenceDiagram
 ```
 
 
-The trace/usage branch is a requirement to prove, not an assumed integration. No model call or gateway enforcement is to be mocked away in the real-gateway integration test.
+**The trace/usage branch is a requirement to prove, not an assumed integration.** No model call or gateway enforcement is to be mocked away in the real-gateway integration test.
 
 ## Configuration lifecycle (target)
 
