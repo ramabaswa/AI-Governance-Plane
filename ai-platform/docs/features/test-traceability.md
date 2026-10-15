@@ -1,0 +1,28 @@
+# Test Traceability
+
+**Status:** Coverage mapped to current source tests; no tests were executed for
+this implementation handoff. Every verification result below is unverified.
+
+| Feature | Test coverage | Test file and function | Verification |
+|---|---|---|---|
+| F-001 Authentication and tenant access | Local login is environment-gated; client tenant selection and token role claims cannot grant authority; platform-admin membership administration is checked. | `tests/test_control_plane.py::test_local_login_is_disabled_outside_development`; `tests/test_control_plane.py::test_client_cannot_choose_unassigned_tenant`; `tests/test_control_plane.py::test_platform_admin_can_manage_tenant_memberships`; `tests/test_control_plane.py::test_tenant_admin_cannot_manage_memberships`; `tests/test_control_plane.py::test_role_claims_do_not_grant_tenant_authority`; `tests/test_identity.py::test_oidc_verification_checks_signature_issuer_audience_and_required_claims`; `tests/test_identity.py::test_oidc_verification_rejects_wrong_audience`; `tests/test_identity.py::test_oidc_verification_rejects_invalid_signature` | Unverified — not run |
+| Configuration safety | Database defaults to SQLite only in development/test; local token signing requires an explicit secret and is disabled elsewhere. | `tests/test_database.py::test_database_uses_sqlite_by_default_in_development_and_test`; `tests/test_database.py::test_database_requires_explicit_url_outside_development_and_test`; `tests/test_identity.py::test_local_token_signing_requires_explicit_secret`; `tests/test_identity.py::test_local_token_signing_is_disabled_outside_development_and_tests` | Unverified — not run |
+| F-002 Application and key lifecycle | Tenant-scoped registration and one-time key return; production drafts receive no key; revocation updates the desired key catalog. | `tests/test_control_plane.py::test_application_registration_is_tenant_scoped_and_key_is_one_time`; `tests/test_control_plane.py::test_production_application_cannot_skip_approval`; `tests/test_control_plane.py::test_key_revocation_updates_the_desired_key_catalog` | Unverified — not run |
+| F-004 Model/backend registry | No focused model CRUD or provider-secret integration test currently exists. | — | Not covered |
+| F-005 Routes and gateway resources | Route duplicate handling, validation-only behavior, generated Kubernetes resources, lazy Kubernetes credentials, observed-status reconciliation, pending state, and partial apply errors. | `tests/test_control_plane.py::test_duplicate_route_conflicts_and_validation_only_emits_candidate_resources`; `tests/test_gateway_translator.py::test_translator_generates_backend_route_and_guard_policy_crds`; `tests/test_gateway_translator.py::test_yaml_output_contains_only_generated_kubernetes_resources`; `tests/integration/test_agentgateway_reconcile.py::test_kubernetes_credentials_are_loaded_only_for_resource_operations`; `tests/integration/test_agentgateway_reconcile.py::test_reconciler_reports_only_controller_observed_status`; `tests/integration/test_agentgateway_reconcile.py::test_reconciler_keeps_resource_pending_until_controller_accepts`; `tests/integration/test_agentgateway_reconcile.py::test_reconciler_surfaces_partial_apply_conflicts` | Unverified — not run; no live gateway test |
+| F-006 Supported guardrails | Regex ReDoS pattern rejection and generated prompt-guard resource shape. | `tests/security/test_security_boundaries.py::test_redos_catastrophic_backtracking_pattern_rejected`; `tests/test_gateway_translator.py::test_translator_generates_backend_route_and_guard_policy_crds` | Unverified — not run |
+| F-010 Observability | No fabricated usage fields; configured Prometheus metrics and explicit unavailability when metrics or sources are missing. | `tests/test_observability.py::test_tempo_trace_results_do_not_invent_usage_fields`; `tests/test_observability.py::test_prometheus_returns_observed_values_and_explicit_unconfigured_metrics`; `tests/test_observability.py::test_observability_source_absence_is_an_explicit_error` | Unverified — not run |
+| F-012 Audit evidence | Audit reads are recorded and tampering with event details invalidates the hash chain. | `tests/test_control_plane.py::test_audit_read_is_chained_and_itself_audited`; `tests/test_control_plane.py::test_audit_chain_detects_mutated_event_details` | Unverified — not run |
+| Security boundaries | Secret references are masked in logs. | `tests/security/test_security_boundaries.py::test_secret_reference_manager_masks_tokens_in_logs` | Unverified — not run |
+| Deferred API surface | OpenAPI excludes deferred features and an inference proxy. | `tests/test_control_plane.py::test_openapi_excludes_deferred_features_and_inference_proxy` | Unverified — not run |
+
+## Explicit coverage gaps
+
+- No end-to-end request has been sent through a live agentgateway to a backend.
+- No test currently verifies a real OIDC provider/JWKS endpoint, production deployment configuration, or role/membership administration matrix.
+- Key provisioning failure, cleanup failure, and retry behavior need additional focused coverage.
+- No live Kubernetes API/CRD compatibility, Alembic migration, PostgreSQL durability, Tempo, or Prometheus integration has been exercised.
+- MCP, self-service onboarding, approval workflows, cost/budget enforcement, and automated drift remediation are deferred and not covered by this A–F slice.
+
+Do not mark any row as passed until its test has actually run. Record the exact
+command, environment, date, and outcome when test execution is authorized.

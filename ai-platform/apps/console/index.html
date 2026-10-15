@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Governance Plane</title>
+  <link rel="stylesheet" href="console.css">
+</head>
+<body>
+  <div class="app-layout">
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <div class="brand-logo">AG</div>
+        <div class="brand-text">
+          <span class="brand-title">AI Governance</span>
+          <span class="brand-subtitle">agentgateway control plane</span>
+        </div>
+      </div>
+      <nav class="sidebar-nav" aria-label="Control plane sections">
+        <button class="nav-link active" data-section="overview">Overview</button>
+        <button class="nav-link" data-section="applications">Applications</button>
+        <button class="nav-link" data-section="models">Model catalog</button>
+        <button class="nav-link" data-section="routes">Gateway routes</button>
+        <button class="nav-link" data-section="traces">Traces & metrics</button>
+        <button class="nav-link" data-section="audit">Audit evidence</button>
+      </nav>
+    </aside>
+
+    <main class="main-content">
+      <header class="topbar">
+        <div>
+          <h1>AI Governance Plane</h1>
+          <p class="text-muted">Management API evidence; runtime status is never inferred from a write acknowledgement.</p>
+        </div>
+        <button class="btn btn-outline btn-sm" id="refresh-button">Refresh</button>
+      </header>
+
+      <section class="card" aria-labelledby="auth-heading">
+        <h2 id="auth-heading">Sign in with your identity provider</h2>
+        <p class="text-muted">Paste an access token issued by the configured OIDC provider. It is held in memory only.</p>
+        <form id="auth-form" class="form-row">
+          <label for="access-token">OIDC access token</label>
+          <input id="access-token" class="form-input" type="password" autocomplete="off" required>
+          <label for="tenant-context">Tenant ID (only if required)</label>
+          <input id="tenant-context" class="form-input" type="text" autocomplete="off">
+          <button class="btn btn-primary" type="submit">Verify identity</button>
+        </form>
+        <p id="auth-status" role="status" class="text-muted">Not authenticated.</p>
+      </section>
+
+      <p id="notice" role="status" aria-live="polite"></p>
+
+      <div class="tab-content">
+        <section id="section-overview" class="tab-pane active">
+          <div class="kpi-grid">
+            <div class="kpi-card"><span class="kpi-label">Applications</span><span id="overview-apps" class="kpi-value">—</span></div>
+            <div class="kpi-card"><span class="kpi-label">Routes observed active</span><span id="overview-routes" class="kpi-value">—</span></div>
+            <div class="kpi-card"><span class="kpi-label">Control API requests</span><span id="overview-api-requests" class="kpi-value">—</span></div>
+            <div class="kpi-card"><span class="kpi-label">Gateway token metrics</span><span id="overview-tokens" class="kpi-value">Unavailable</span></div>
+          </div>
+          <p class="text-muted">Gateway request and token metrics remain unavailable unless the gateway exports tenant-scoped metrics to Prometheus.</p>
+        </section>
+
+        <section id="section-applications" class="tab-pane">
+          <h2>Applications</h2>
+          <form id="application-form" class="card">
+            <label for="application-name">Application name</label>
+            <input id="application-name" class="form-input" required minlength="2" maxlength="64" pattern="[a-z0-9-]+">
+            <label for="application-environment">Environment</label>
+            <select id="application-environment" class="form-input">
+              <option value="development">Development</option>
+              <option value="staging">Staging</option>
+              <option value="production">Production</option>
+            </select>
+            <label for="application-models">Allowed model names (comma-separated)</label>
+            <input id="application-models" class="form-input" placeholder="claude-3-5-sonnet">
+            <button class="btn btn-primary" type="submit">Register application</button>
+          </form>
+          <div id="credential-result" class="card" hidden>
+            <h3>One-time credential</h3>
+            <p id="credential-state" class="text-muted"></p>
+            <code id="credential-value"></code>
+            <button id="copy-credential" class="btn btn-outline btn-sm">Copy</button>
+            <p class="text-muted">The key is stored as a SHA-256 verifier in the gateway API-key catalog. Gateway runtime observation is not implied.</p>
+          </div>
+          <div class="table-container"><table class="data-table">
+            <thead><tr><th>Name</th><th>Environment</th><th>Models</th><th>Lifecycle</th><th>Key prefix</th></tr></thead>
+            <tbody id="applications-table"></tbody>
+          </table></div>
+        </section>
+
+        <section id="section-models" class="tab-pane">
+          <h2>Approved model catalog</h2>
+          <form id="model-form" class="card">
+            <label for="model-name">Catalog name</label>
+            <input id="model-name" class="form-input" required pattern="[a-z0-9][a-z0-9._-]{1,63}">
+            <label for="model-provider">Provider</label>
+            <select id="model-provider" class="form-input">
+              <option value="anthropic">Anthropic</option><option value="openai">OpenAI</option>
+              <option value="bedrock">Bedrock</option><option value="gemini">Gemini</option>
+              <option value="vllm">vLLM</option>
+            </select>
+            <label for="provider-model">Provider model identifier</label>
+            <input id="provider-model" class="form-input" required>
+            <label for="provider-secret-ref">Kubernetes Secret reference (secret-name/key)</label>
+            <input id="provider-secret-ref" class="form-input" required pattern="[a-z0-9][a-z0-9.-]*/[A-Za-z0-9._-]+">
+            <button class="btn btn-primary" type="submit">Register model</button>
+          </form>
+          <div class="table-container"><table class="data-table">
+            <thead><tr><th>Name</th><th>Provider</th><th>Provider model</th><th>Secret reference</th><th>State</th></tr></thead>
+            <tbody id="models-table"></tbody>
+          </table></div>
+        </section>
+
+        <section id="section-routes" class="tab-pane">
+          <h2>Gateway routes</h2>
+          <form id="route-form" class="card">
+            <label for="route-name">Route name</label>
+            <input id="route-name" class="form-input" required pattern="[a-z0-9-]+">
+            <label for="route-path">Path prefix</label>
+            <input id="route-path" class="form-input" required placeholder="/v1/chat/completions">
+            <label for="route-model">Primary model</label>
+            <select id="route-model" class="form-input" required></select>
+            <label for="guard-pattern">Optional request regex guard</label>
+            <input id="guard-pattern" class="form-input" placeholder="Leave blank for no regex rule">
+            <button class="btn btn-primary" type="submit">Validate and create route</button>
+          </form>
+          <div class="table-container"><table class="data-table">
+            <thead><tr><th>Name</th><th>Path</th><th>Backend</th><th>State</th><th>Action</th></tr></thead>
+            <tbody id="routes-table"></tbody>
+          </table></div>
+        </section>
+
+        <section id="section-traces" class="tab-pane">
+          <h2>Tempo traces</h2>
+          <p class="text-muted">Only fields returned by Tempo are shown. Token counts and costs are not inferred.</p>
+          <div class="table-container"><table class="data-table">
+            <thead><tr><th>Trace ID</th><th>Service</th><th>Trace</th><th>Duration (ms)</th></tr></thead>
+            <tbody id="traces-table"></tbody>
+          </table></div>
+          <h2>Prometheus metrics</h2>
+          <pre id="metrics-output">Not queried.</pre>
+        </section>
+
+        <section id="section-audit" class="tab-pane">
+          <h2>Tenant audit evidence</h2>
+          <div class="table-container"><table class="data-table">
+            <thead><tr><th>Time</th><th>Actor</th><th>Action</th><th>Resource</th><th>Event hash</th></tr></thead>
+            <tbody id="audit-table"></tbody>
+          </table></div>
+        </section>
+      </div>
+    </main>
+  </div>
+  <script src="console.js"></script>
+</body>
+</html>

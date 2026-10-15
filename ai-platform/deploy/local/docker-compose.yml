@@ -1,0 +1,104 @@
+services:
+  postgres:
+    image: postgres:16.4
+    environment:
+      POSTGRES_DB: ai_governance
+      POSTGRES_USER: governance
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U governance -d ai_governance"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - governance-net
+
+  control-api:
+    build:
+      context: ../..
+      dockerfile: deploy/local/Dockerfile.api
+    ports:
+      - "8000:8000"
+    environment:
+      ENVIRONMENT: development
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL for PostgreSQL}
+      JWT_SECRET: ${JWT_SECRET:?Set a local development JWT_SECRET}
+      CORS_ALLOWED_ORIGINS: http://localhost:3000
+      AGENTGATEWAY_NAMESPACE: agentgateway-system
+      AGENTGATEWAY_GATEWAY_NAME: ai-gateway
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://otel-collector:4318/v1/traces
+      OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: http://otel-collector:4318/v1/metrics
+      TEMPO_QUERY_URL: http://tempo:3200
+      PROMETHEUS_QUERY_URL: http://prometheus:9090
+    depends_on:
+      postgres:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+      tempo:
+        condition: service_started
+      prometheus:
+        condition: service_started
+    networks:
+      - governance-net
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.119.0
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml:ro
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+    depends_on:
+      - tempo
+    networks:
+      - governance-net
+
+  tempo:
+    image: grafana/tempo:2.7.2
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes:
+      - ./tempo.yaml:/etc/tempo.yaml:ro
+      - tempo-data:/tmp/tempo
+    ports:
+      - "3200:3200"
+    networks:
+      - governance-net
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    depends_on:
+      - otel-collector
+    networks:
+      - governance-net
+
+  console:
+    build:
+      context: ../..
+      dockerfile: deploy/local/Dockerfile.console
+    ports:
+      - "3000:80"
+    depends_on:
+      - control-api
+    networks:
+      - governance-net
+
+volumes:
+  postgres-data:
+  tempo-data:
+  prometheus-data:
+
+networks:
+  governance-net:
+    driver: bridge

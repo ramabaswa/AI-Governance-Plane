@@ -1,0 +1,109 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: control-api
+  namespace: ai-governance-system
+  labels:
+    app: control-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: control-api
+  template:
+    metadata:
+      labels:
+        app: control-api
+    spec:
+      serviceAccountName: control-api
+      containers:
+        - name: control-api
+          image: ghcr.io/ramabaswa/ai-governance-plane/control-api:v0.1.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          env:
+            - name: ENVIRONMENT
+              value: "production"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: control-api-secrets
+                  key: database-url
+            - name: OIDC_ISSUER
+              valueFrom:
+                configMapKeyRef:
+                  name: control-api-config
+                  key: oidc-issuer
+            - name: OIDC_AUDIENCE
+              valueFrom:
+                configMapKeyRef:
+                  name: control-api-config
+                  key: oidc-audience
+            - name: OIDC_JWKS_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: control-api-config
+                  key: oidc-jwks-url
+            - name: TEMPO_QUERY_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: control-api-config
+                  key: tempo-query-url
+            - name: PROMETHEUS_QUERY_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: control-api-config
+                  key: prometheus-query-url
+            - name: OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: control-api-config
+                  key: otel-traces-endpoint
+            - name: OTEL_EXPORTER_OTLP_METRICS_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: control-api-config
+                  key: otel-metrics-endpoint
+            - name: AGENTGATEWAY_NAMESPACE
+              value: "agentgateway-system"
+            - name: AGENTGATEWAY_GATEWAY_NAME
+              value: "ai-gateway"
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: control-api
+  namespace: ai-governance-system
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: control-api
+  namespace: ai-governance-system
+spec:
+  selector:
+    app: control-api
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8000

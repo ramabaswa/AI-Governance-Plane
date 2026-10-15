@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Governance Plane — Wireframe Prototype</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="prototype-banner" role="note">
+    <span class="banner-tag">STATIC WIREFRAME</span>
+    <span class="banner-text">Illustrative only — no identity, API, Kubernetes, gateway, MCP, telemetry, or audit service is connected.</span>
+    <span class="user-role-badge">Sample role: tenant_admin</span>
+  </div>
+
+  <div class="app-layout">
+    <nav class="sidebar" aria-label="Primary navigation">
+      <div class="brand">
+        <div class="brand-icon" aria-hidden="true">AG</div>
+        <div class="brand-name">AI Governance Plane<span class="brand-sub">Proposed OSS path: agentgateway v1.6.0</span></div>
+      </div>
+      <div class="nav-section">MANAGEMENT</div>
+      <ul class="nav-links">
+        <li><button class="nav-item active" data-screen="overview">Overview <span>SCR-002</span></button></li>
+        <li><button class="nav-item" data-screen="applications">Applications <span>SCR-003</span></button></li>
+        <li><button class="nav-item" data-screen="models">Models &amp; providers <span>SCR-005</span></button></li>
+        <li><button class="nav-item" data-screen="routes">Routes &amp; policies <span>SCR-006</span></button></li>
+        <li><button class="nav-item" data-screen="mcp">MCP governance <span>SCR-007</span></button></li>
+      </ul>
+      <div class="nav-section">EVIDENCE</div>
+      <ul class="nav-links">
+        <li><button class="nav-item" data-screen="traces">Traces &amp; usage <span>SCR-009</span></button></li>
+        <li><button class="nav-item" data-screen="audit">Audit events <span>SCR-011</span></button></li>
+        <li><button class="nav-item" data-screen="status">Runtime status <span>SCR-012</span></button></li>
+      </ul>
+      <div class="nav-section">DEFERRED</div>
+      <ul class="nav-links">
+        <li><button class="nav-item" data-screen="deferred">Onboarding · approvals · budgets</button></li>
+      </ul>
+      <div class="nav-footer">
+        <div class="user-info">
+          <div class="avatar" aria-hidden="true">?</div>
+          <div class="details">
+            <span class="name">Example user</span>
+            <span class="email">No authenticated session</span>
+          </div>
+        </div>
+      </div>
+    </nav>
+
+    <main class="content-area">
+      <header class="top-header">
+        <span>Tenant: <strong>Illustrative only</strong></span>
+        <span class="gateway-status-pill status-unknown">Runtime status: Unknown</span>
+      </header>
+
+      <div class="view-container">
+        <div id="prototypeMessage" class="prototype-note" role="status" aria-live="polite">
+          All content below is static sample content. Navigation is the only live interaction.
+        </div>
+
+        <section id="screen-overview" class="view-section active">
+          <div class="section-header">
+            <div>
+              <h2>Tenant overview <span class="tag">SCR-002</span></h2>
+              <p class="subtitle">Only verified, tenant-scoped sources should populate these cards.</p>
+            </div>
+          </div>
+          <div class="metrics-grid">
+            <div class="metric-card"><span class="metric-title">Applications</span><span class="metric-value">—</span><span class="metric-meta">No registry connected</span></div>
+            <div class="metric-card"><span class="metric-title">Gateway resources</span><span class="metric-value">—</span><span class="metric-meta">No Kubernetes status connected</span></div>
+            <div class="metric-card"><span class="metric-title">Request telemetry</span><span class="metric-value">—</span><span class="metric-meta">No telemetry store connected</span></div>
+            <div class="metric-card"><span class="metric-title">Audit events</span><span class="metric-value">—</span><span class="metric-meta">Durable store not connected</span></div>
+          </div>
+          <div class="card mt-4">
+            <h3>Proposed request path</h3>
+            <div class="topology-diagram">
+              <div class="node client">Application</div>
+              <div class="arrow">→</div>
+              <div class="node gateway">agentgateway runtime</div>
+              <div class="arrow">→</div>
+              <div class="node upstream">Approved LLM / MCP backend</div>
+            </div>
+            <p class="subtitle mt-3">The Control API manages configuration; inference and MCP requests do not pass through it.</p>
+          </div>
+        </section>
+
+        <section id="screen-applications" class="view-section">
+          <div class="section-header"><div><h2>Applications <span class="tag">SCR-003 · F-002</span></h2><p class="subtitle">Tenant ownership is derived from authenticated membership, not a client-supplied tenant ID.</p></div></div>
+          <div class="card">
+            <p>No application data is connected.</p>
+            <p class="subtitle mt-2">A real registration flow must show an explicit lifecycle state. Credential reveal is shown only after secure one-time issuance is implemented.</p>
+            <button class="btn btn-primary mt-3" data-action="preview">Preview registration state</button>
+          </div>
+        </section>
+
+        <section id="screen-models" class="view-section">
+          <div class="section-header"><div><h2>Models &amp; providers <span class="tag">SCR-005 · F-004</span></h2><p class="subtitle">Store provider/model metadata and Secret references; never show secret plaintext.</p></div></div>
+          <div class="card">
+            <p>No approved backend catalog is connected.</p>
+            <p class="subtitle mt-2">Provider health remains Unknown until verified by a real integration.</p>
+            <button class="btn btn-primary mt-3" data-action="preview">Preview backend form</button>
+          </div>
+        </section>
+
+        <section id="screen-routes" class="view-section">
+          <div class="section-header"><div><h2>Routes &amp; policies <span class="tag">SCR-006 · F-005/F-006</span></h2><p class="subtitle">Desired resources are written to Kubernetes; the controller publishes observed status.</p></div></div>
+          <div class="card">
+            <div class="lifecycle-pipeline" aria-label="Proposed lifecycle">
+              <div class="pipe-step completed">Draft</div>
+              <div class="pipe-step completed">Validated</div>
+              <div class="pipe-step active">Pending controller observation</div>
+              <div class="pipe-step">Observed or rejected</div>
+            </div>
+            <p class="mt-3">A Kubernetes write acknowledgement is not runtime confirmation. No direct gateway admin apply endpoint is represented here.</p>
+            <p class="subtitle mt-2">Rollback and production promotion are deferred.</p>
+            <button class="btn btn-primary mt-3" data-action="preview">Preview validation state</button>
+          </div>
+        </section>
+
+        <section id="screen-mcp" class="view-section">
+          <div class="section-header"><div><h2>MCP governance <span class="tag">SCR-007 · F-007</span></h2><p class="subtitle">Discovery and authorization require a real MCP server and pinned gateway integration.</p></div></div>
+          <div class="card">
+            <p>No MCP server is connected; no tools have been discovered.</p>
+            <p class="subtitle mt-2">The prototype cannot test `tools/list` visibility or `tools/call` enforcement.</p>
+            <button class="btn btn-primary mt-3" data-action="preview">Preview discovery states</button>
+          </div>
+        </section>
+
+        <section id="screen-traces" class="view-section">
+          <div class="section-header"><div><h2>Traces &amp; usage <span class="tag">SCR-009 · F-010</span></h2><p class="subtitle">Only actual gateway-generated telemetry should appear.</p></div></div>
+          <div class="card"><p>No telemetry source is connected.</p><p class="subtitle mt-2">Missing token/usage fields are unavailable, not zero or estimated.</p></div>
+        </section>
+
+        <section id="screen-audit" class="view-section">
+          <div class="section-header"><div><h2>Audit events <span class="tag">SCR-011 · F-012</span></h2><p class="subtitle">Durable management events, tenant-scoped and secret-redacted.</p></div></div>
+          <div class="card"><p>No durable audit store is connected.</p><p class="subtitle mt-2">The current in-memory hash chain is not presented as a compliance ledger or signed export.</p></div>
+        </section>
+
+        <section id="screen-status" class="view-section">
+          <div class="section-header"><div><h2>Runtime status <span class="tag">SCR-012 · F-013</span></h2><p class="subtitle">Read actual Kubernetes resource/controller conditions.</p></div></div>
+          <div class="card"><span class="status-badge">Unknown</span><p class="mt-2">No controller status source is connected. No forced reconciliation is available in this MVP.</p></div>
+        </section>
+
+        <section id="screen-deferred" class="view-section">
+          <div class="section-header"><div><h2>Deferred capabilities</h2></div></div>
+          <div class="card deferred-card">
+            <h3>Not available in the proposed MVP</h3>
+            <ul>
+              <li>Self-service onboarding wizard (F-003)</li>
+              <li>HITL approval queue and production promotion (F-008)</li>
+              <li>Budgets, hard caps, and cost projections (F-011)</li>
+              <li>Rollback and automated drift remediation (F-009/F-013)</li>
+            </ul>
+            <p class="subtitle mt-3">No action on this page changes platform or gateway state.</p>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>
