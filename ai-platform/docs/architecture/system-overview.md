@@ -81,7 +81,6 @@ The trace/usage branch is a requirement to prove, not an assumed integration. No
 
 ## Configuration lifecycle (target)
 
-```mermaid
 sequenceDiagram
     autonumber
     actor Admin
@@ -102,6 +101,7 @@ sequenceDiagram
     Agw->>Agw: Reconcile runtime
     Agw->>Kube: Publish resource status/conditions
     API->>Kube: Read observed status
+    
     alt Controller reports accepted and programmed
         API->>Store: Record observed result and audit evidence
         API-->>UI: Observed active
@@ -109,7 +109,7 @@ sequenceDiagram
         API->>Store: Record explicit failure/pending evidence
         API-->>UI: Failed or still pending; retain diagnostic correlation
     end
-```
+
 
 Status names in this diagram are conceptual until mapped to the exact v1.6.0 resource conditions. A write acknowledgement is not an observation. This path deliberately excludes a second GitOps writer and the existing unverified direct `/config/apply` HTTP assumption.
 
