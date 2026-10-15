@@ -53,33 +53,28 @@ flowchart LR
 
 ## Request sequence (target)
 
+```mermaid
 sequenceDiagram
     autonumber
-    actor Admin
-    participant UI as Console
-    participant API as Control API
-    participant Store as Platform store
-    participant Kube as Kubernetes API
-    participant Agw as agentgateway controller
+    participant App as Application / agent
+    participant GW as agentgateway v1.6.0
+    participant Policy as Native gateway policy
+    participant Backend as Deterministic test backend
+    participant OTel as OTel collector/store
 
-    Admin->>UI: Submit route/model intent
-    UI->>API: Versioned, tenant-authorized request
-    API->>Store: Record user action and audit event
-    API->>API: Validate inputs and synthesize pinned CRD shape
-    API->>Kube: Create/update Gateway API and agentgateway resources
-    Kube-->>API: Write accepted or error
-    API-->>UI: Pending controller observation (not active success)
-    Agw->>Kube: Watch desired resources
-    Agw->>Agw: Reconcile runtime
-    Agw->>Kube: Publish resource status/conditions
-    API->>Kube: Read observed status
-    alt Controller reports accepted and programmed
-        API->>Store: Record observed result and audit evidence
-        API-->>UI: Observed active
-    else Rejected, stale, or unavailable
-        API->>Store: Record explicit failure/pending evidence
-        API-->>UI: Failed or still pending; retain diagnostic correlation
+    App->>GW: LLM request with configured workload credential
+    GW->>Policy: Validate identity, route and enabled policy
+    alt Rejected
+        Policy-->>GW: Deny
+        GW-->>App: Denial response
+    else Allowed
+        Policy-->>GW: Allow and select configured backend
+        GW->>Backend: Forward request
+        Backend-->>GW: Deterministic response and actual usage metadata
+        GW->>OTel: Emit trace/metrics if supported
+        GW-->>App: Response
     end
+```
 
 
 The trace/usage branch is a requirement to prove, not an assumed integration. No model call or gateway enforcement is to be mocked away in the real-gateway integration test.
