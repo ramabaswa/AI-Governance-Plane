@@ -75,44 +75,14 @@ sequenceDiagram
         GW-->>App: Response
     end
 ```
-
-
-**The Control API is not an inference proxy.** It manages identity-scoped resources and reads evidence; clients send LLM and MCP traffic directly to agentgateway.
+**The trace/usage branch is a requirement to prove, not an assumed integration.** No model call or gateway enforcement is to be mocked away in the real-gateway integration test.
 
 ## Configuration lifecycle (target)
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant Admin as Administrator
-    participant UI as Console
-    participant API as Control API
-    participant Store as Platform store
-    participant Kube as Kubernetes API
-    participant Agw as agentgateway controller
-
-    Admin->>UI: Submit route/model intent
-    UI->>API: Versioned, tenant-authorized request
-    API->>Store: Record user action and audit event
-    API->>API: Validate inputs and synthesize pinned CRD shape
-    API->>Kube: Create/update Gateway API and agentgateway resources
-    Kube-->>API: Write accepted or error
-    API-->>UI: Pending controller observation (not active success)
-    Agw->>Kube: Watch desired resources
-    Agw->>Agw: Reconcile runtime
-    Agw->>Kube: Publish resource status/conditions
-    API->>Kube: Read observed status
-    end
-```
-
-**The trace/usage branch is a requirement to prove, not an assumed integration.** No model call or gateway enforcement is to be mocked away in the real-gateway integration test.
-
-## Configuration lifecycle (target)2
-
-```mermaid
-sequenceDiagram
-    autonumber
-    actor Admin
+    participant actor as Admin
     participant UI as Console
     participant API as Control API
     participant Store as Platform store
