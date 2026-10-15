@@ -82,7 +82,7 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     autonumber
-    participant actor as Admin
+    actor Admin
     participant UI as Console
     participant API as Control API
     participant Store as Platform store
@@ -100,13 +100,13 @@ sequenceDiagram
     Agw->>Agw: Reconcile runtime
     Agw->>Kube: Publish resource status/conditions
     API->>Kube: Read observed status
-    
+
     alt Controller reports accepted and programmed
         API->>Store: Record observed result and audit evidence
         API-->>UI: Observed active
     else Rejected, stale, or unavailable
-        API->>Store: Record explicit failure/pending evidence
-        API-->>UI: Failed or still pending; retain diagnostic correlation
+        API->>Store: Record explicit failure or pending evidence
+        API-->>UI: Failed or still pending - retain diagnostic correlation
     end
 ```
 
