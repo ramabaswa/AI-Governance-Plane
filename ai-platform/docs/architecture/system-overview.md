@@ -84,7 +84,7 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     autonumber
-    actor Admin
+    participant Admin as Administrator
     participant UI as Console
     participant API as Control API
     participant Store as Platform store
