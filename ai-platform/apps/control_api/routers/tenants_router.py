@@ -41,7 +41,7 @@ async def create_tenant(
     current_user: AuthenticatedUser = Depends(require_role([Role.PLATFORM_ADMIN])),
     session: Session = Depends(get_db_session),
 ):
-    return service.create_tenant(session, actor=current_user.subject, request=req)
+    return service.create_tenant(session, actor=current_user.actor_id, request=req)
 
 
 @router.get("/{tenant_id}/memberships", response_model=List[TenantMembership])
@@ -64,7 +64,7 @@ async def create_tenant_membership(
     return service.create_membership(
         session,
         tenant_id=tenant_id,
-        actor=current_user.subject,
+        actor=current_user.actor_id,
         request=req,
     )
 
@@ -81,6 +81,6 @@ async def update_tenant_membership(
         session,
         tenant_id=tenant_id,
         subject=subject,
-        actor=current_user.subject,
+        actor=current_user.actor_id,
         request=req,
     )

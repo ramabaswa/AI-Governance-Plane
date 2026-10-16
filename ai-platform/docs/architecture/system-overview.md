@@ -4,12 +4,15 @@
 **Data-plane reference:** agentgateway OSS `v1.6.0` at commit `ea5608642b9d5c94c5baf5fd9f2f9849b808e963`.  
 **Verification status:** Application, migration, Kubernetes, and telemetry paths have not been executed or verified against a live environment. Local Compose does not include agentgateway.
 
+For the target dual-ingress design and system-of-record boundaries, see the [canonical architecture](../../../docs/architect.md). APIM ingress is an architectural target and is not implemented in this repository.
+
 ## Architecture boundary
 
 ```mermaid
 flowchart LR
     User["Platform user"]
     Client["Application / agent"]
+    PrivateClient["Approved private agent / application"]
     IdP["OIDC identity provider"]
 
     subgraph CP["AI Governance Plane — control plane"]
@@ -21,6 +24,8 @@ flowchart LR
 
     Kube[("Kubernetes API\nactive desired CRDs + status")]
     Controller["agentgateway Kubernetes controller"]
+
+    APIM["Optional APIM ingress\n(not implemented in this repository)"]
 
     subgraph DP["agentgateway — data plane"]
         Gateway["Gateway runtime\nAPI key, routes, supported policies"]
@@ -41,7 +46,9 @@ flowchart LR
     API -->|"allowlisted MCP discovery only"| MCP
     Secrets --> Gateway
 
-    Client -->|"LLM/MCP requests; no Control API hop"| Gateway
+    Client -->|"Path 1: LLM/MCP requests"| APIM
+    APIM --> Gateway
+    PrivateClient -->|"Path 2: approved direct private ingress"| Gateway
     Gateway --> LLM
     Gateway --> MCP
     Gateway -->|"OTLP traces/metrics"| Telemetry
@@ -50,7 +57,7 @@ flowchart LR
     API --> DB
 ```
 
-**The Control API is not an inference proxy.** It manages identity-scoped resources and reads evidence; clients send LLM and MCP traffic directly to agentgateway.
+**The Control API is not an inference proxy.** It manages identity-scoped resources and reads evidence. The target supports APIM → agentgateway and approved private-client → agentgateway paths. Only the direct agentgateway configuration path is represented by current repository source; APIM has not been integrated. Both paths must converge on the same gateway policies and backends, and direct ingress must not bypass the shared security baseline.
 
 Approval/onboarding records, advisory budgets, MCP registry/policy intent, and
 route revisions are persisted by the Control API. MCP discovery is a bounded

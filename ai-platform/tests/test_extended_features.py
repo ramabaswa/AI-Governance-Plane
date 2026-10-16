@@ -139,6 +139,8 @@ def test_mcp_discovery_uses_real_protocol_and_enforces_host_allowlist(api_client
     assert discovered.status_code == 200
     assert discovered.json()["discovery_state"] == "discovered"
     assert discovered.json()["discovered_tools"][0]["name"] == "lookup"
+    assert discovered.json()["discovered_tools"][0]["is_sensitive"] is True
+    assert discovered.json()["discovered_tools"][0]["requires_hitl_approval"] is True
     assert FakeHttpClient.calls[1][0] == "notifications/initialized"
 
 

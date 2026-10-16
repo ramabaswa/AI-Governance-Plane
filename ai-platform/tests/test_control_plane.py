@@ -4,12 +4,13 @@ import json
 
 from sqlalchemy import select
 
-from shared.authorization.jwt_handler import create_access_token
+from shared.authorization.jwt_handler import DEVELOPMENT_ISSUER, create_access_token
 from shared.authorization.roles import Role
 from shared.contracts.audit import AuditAction
 from features.audit_evidence.service import list_events, verify_chain
 from features.gateway_traffic import service as route_service
 from features.persistence import AuditEventRecord, GatewayRouteRecord
+from features.persistence import TenantMembershipRecord
 from shared.errors.exceptions import GatewayReconciliationError
 
 
@@ -45,7 +46,11 @@ def test_platform_admin_can_manage_tenant_memberships(api_client):
     created = client.post(
         "/api/v1/tenants/tenant-acme/memberships",
         headers=platform_headers,
-        json={"subject": "newdev@acme.internal", "roles": ["developer"]},
+        json={
+            "issuer": DEVELOPMENT_ISSUER,
+            "subject": "newdev@acme.internal",
+            "roles": ["developer"],
+        },
     )
     assert created.status_code == 201
 
@@ -61,7 +66,11 @@ def test_tenant_admin_cannot_manage_memberships(api_client):
     response = client.post(
         "/api/v1/tenants/tenant-acme/memberships",
         headers=auth_headers(subject="admin@acme.internal"),
-        json={"subject": "newdev@acme.internal", "roles": ["developer"]},
+        json={
+            "issuer": DEVELOPMENT_ISSUER,
+            "subject": "newdev@acme.internal",
+            "roles": ["developer"],
+        },
     )
     assert response.status_code == 403
 
@@ -387,6 +396,55 @@ def test_route_status_transitions_replace_stale_observed_state(api_client):
         ).all())
         assert AuditAction.ROUTE_OBSERVED_ACTIVE.value in actions
         assert AuditAction.ROUTE_STATUS_CHANGED.value in actions
+
+
+def test_membership_resolution_is_scoped_by_oidc_issuer(api_client):
+    client, sessions = api_client
+    other_issuer = "https://other.identity.example.test/"
+    with sessions.begin() as session:
+        session.add(TenantMembershipRecord(
+            issuer=other_issuer,
+            subject="dev@acme.internal",
+            tenant_id="tenant-globex",
+            roles=[Role.TENANT_ADMIN.value],
+            created_at=0,
+        ))
+    token = create_access_token(
+        subject="dev@acme.internal",
+        tenant_id="tenant-acme",
+        roles=[Role.PLATFORM_ADMIN],
+        extra_claims={"iss": other_issuer},
+    )
+
+    response = client.get(
+        "/api/v1/auth/me",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["data"]["issuer"] == other_issuer
+    assert response.json()["data"]["tenant_id"] == "tenant-globex"
+    assert response.json()["data"]["roles"] == [Role.TENANT_ADMIN.value]
+
+
+def test_platform_admin_cross_tenant_context_is_audited(api_client):
+    client, sessions = api_client
+    response = client.get(
+        "/api/v1/applications",
+        headers=auth_headers(tenant_id="tenant-globex", subject="root@platform.internal"),
+    )
+    assert response.status_code == 200
+
+    with sessions() as session:
+        events = session.scalars(
+            select(AuditEventRecord).where(
+                AuditEventRecord.tenant_id == "platform",
+                AuditEventRecord.action == AuditAction.PLATFORM_TENANT_CONTEXT_SELECTED.value,
+            )
+        ).all()
+        assert len(events) == 1
+        assert events[0].actor == f"{DEVELOPMENT_ISSUER}#root@platform.internal"
+        assert events[0].resource_id == "tenant-globex"
 
 
 def test_audit_read_is_chained_and_itself_audited(api_client):

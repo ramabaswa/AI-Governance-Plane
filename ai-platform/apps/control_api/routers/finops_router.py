@@ -34,7 +34,7 @@ async def update_budget(
     service.update_budget(
         session,
         tenant_id=tenant_id,
-        actor=user.subject,
+        actor=user.actor_id,
         request=request,
     )
     session.flush()

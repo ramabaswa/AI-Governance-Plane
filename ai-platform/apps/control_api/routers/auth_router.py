@@ -46,6 +46,7 @@ async def get_me(current_user: AuthenticatedUser = Depends(get_current_user)):
         "success": True,
         "data": {
             "subject": current_user.subject,
+            "issuer": current_user.issuer,
             "tenant_id": current_user.tenant_id,
             "roles": [r.value for r in current_user.roles],
         },

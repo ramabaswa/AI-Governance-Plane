@@ -39,7 +39,7 @@ async def register_server(
     return service.register_server(
         session,
         tenant_id=tenant_id,
-        actor=user.subject,
+        actor=user.actor_id,
         request=request,
     )
 
@@ -56,7 +56,7 @@ async def discover_tools(
         session,
         tenant_id=tenant_id,
         server_id=server_id,
-        actor=user.subject,
+        actor=user.actor_id,
     )
 
 
@@ -72,6 +72,6 @@ async def update_tool_policy(
         session,
         tenant_id=tenant_id,
         server_id=server_id,
-        actor=user.subject,
+        actor=user.actor_id,
         policy=request.policy,
     )

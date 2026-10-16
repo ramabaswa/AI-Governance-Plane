@@ -45,6 +45,18 @@ spec:
                 configMapKeyRef:
                   name: control-api-config
                   key: oidc-jwks-url
+            - name: OIDC_PROVIDERS_JSON
+              valueFrom:
+                configMapKeyRef:
+                  name: control-api-config
+                  key: oidc-providers-json
+                  optional: true
+            - name: OIDC_LEGACY_MEMBERSHIP_ISSUER
+              valueFrom:
+                configMapKeyRef:
+                  name: control-api-config
+                  key: oidc-legacy-membership-issuer
+                  optional: true
             - name: TEMPO_QUERY_URL
               valueFrom:
                 configMapKeyRef:
@@ -107,3 +119,48 @@ spec:
     - protocol: TCP
       port: 80
       targetPort: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reconciliation-worker
+  namespace: ai-governance-system
+  labels:
+    app: reconciliation-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: reconciliation-worker
+  template:
+    metadata:
+      labels:
+        app: reconciliation-worker
+    spec:
+      serviceAccountName: control-api
+      containers:
+        - name: reconciliation-worker
+          image: ghcr.io/ramabaswa/ai-governance-plane/control-api:v0.1.0
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-m", "apps.worker.reconciliation_worker"]
+          env:
+            - name: ENVIRONMENT
+              value: "production"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: control-api-secrets
+                  key: database-url
+            - name: AGENTGATEWAY_NAMESPACE
+              value: "agentgateway-system"
+            - name: AGENTGATEWAY_GATEWAY_NAME
+              value: "ai-gateway"
+            - name: RECONCILE_INTERVAL
+              value: "15"
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"

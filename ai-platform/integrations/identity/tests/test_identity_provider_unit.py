@@ -7,7 +7,7 @@ from shared.errors.exceptions import UnauthorizedError
 
 def test_development_authentication_issues_token_for_seeded_account(monkeypatch):
     monkeypatch.setenv("ENVIRONMENT", "development")
-    monkeypatch.setenv("JWT_SECRET", "unit-test-development-secret")
+    monkeypatch.setenv("JWT_SECRET", "unit-test-development-secret-with-32-bytes")
 
     token = IdentityProvider.authenticate_development_user(
         "dev@acme.internal",
@@ -21,7 +21,7 @@ def test_development_authentication_issues_token_for_seeded_account(monkeypatch)
 
 def test_invalid_development_password_is_rejected(monkeypatch):
     monkeypatch.setenv("ENVIRONMENT", "development")
-    monkeypatch.setenv("JWT_SECRET", "unit-test-development-secret")
+    monkeypatch.setenv("JWT_SECRET", "unit-test-development-secret-with-32-bytes")
 
     with pytest.raises(UnauthorizedError, match="Invalid email or password"):
         IdentityProvider.authenticate_development_user(

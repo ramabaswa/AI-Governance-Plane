@@ -39,6 +39,6 @@ async def register_model(
     return service.create_model(
         session,
         tenant_id=tenant_id,
-        actor=current_user.subject,
+        actor=current_user.actor_id,
         request=req,
     )

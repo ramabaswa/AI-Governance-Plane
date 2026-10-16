@@ -16,11 +16,23 @@ from shared.errors.exceptions import ForbiddenError, UnauthorizedError, Validati
 
 
 class AuthenticatedUser:
-    def __init__(self, subject: str, tenant_id: str, roles: List[Role], raw_claims: Dict[str, Any]):
+    def __init__(
+        self,
+        issuer: str,
+        subject: str,
+        tenant_id: str,
+        roles: List[Role],
+        raw_claims: Dict[str, Any],
+    ):
+        self.issuer = issuer
         self.subject = subject
         self.tenant_id = tenant_id
         self.roles = roles
         self.raw_claims = raw_claims
+
+    @property
+    def actor_id(self) -> str:
+        return f"{self.issuer}#{self.subject}"
 
     def has_role(self, role: Role) -> bool:
         return role in self.roles or Role.PLATFORM_ADMIN in self.roles
@@ -51,11 +63,15 @@ async def get_current_user(
     subject = claims.get("sub")
     if not isinstance(subject, str) or not subject:
         raise UnauthorizedError("Token is missing a valid 'sub' claim")
+    issuer = claims.get("iss")
+    if not isinstance(issuer, str) or not issuer:
+        raise UnauthorizedError("Token is missing a valid 'iss' claim")
 
     memberships = session.scalars(
         select(TenantMembershipRecord)
         .join(TenantRecord, TenantRecord.id == TenantMembershipRecord.tenant_id)
         .where(
+            TenantMembershipRecord.issuer == issuer,
             TenantMembershipRecord.subject == subject,
             TenantRecord.is_active.is_(True),
         )
@@ -95,9 +111,24 @@ async def get_current_user(
     else:
         raise ForbiddenError("Caller has no active tenant membership")
 
+    if platform_admin and requested_tenant_header and tenant_id != "platform":
+        from features.audit_evidence.service import append_event
+        from shared.contracts.audit import AuditAction
+
+        append_event(
+            session,
+            tenant_id="platform",
+            actor=f"{issuer}#{subject}",
+            action=AuditAction.PLATFORM_TENANT_CONTEXT_SELECTED,
+            resource_type="tenant",
+            resource_id=tenant_id,
+            details={"selected_tenant_id": tenant_id},
+        )
+
     trace.get_current_span().set_attribute("tenant.id", tenant_id)
     request.state.tenant_id = tenant_id
     return AuthenticatedUser(
+        issuer=issuer,
         subject=subject,
         tenant_id=tenant_id,
         roles=roles,

@@ -47,7 +47,7 @@ async def register_application(
     app, raw_key = service.create_application(
         session,
         tenant_id=tenant_id,
-        created_by=current_user.subject,
+        created_by=current_user.actor_id,
         request=req,
         kubernetes_client=kubernetes_client,
     )
@@ -93,7 +93,7 @@ async def update_application_lifecycle(
         tenant_id=tenant_id,
         app_id=app_id,
         target_state=req.target_state,
-        actor=current_user.subject,
+        actor=current_user.actor_id,
         kubernetes_client=kubernetes_client,
         approval_request_id=req.approval_request_id,
     )
@@ -120,7 +120,7 @@ async def revoke_application_keys(
         session,
         tenant_id=tenant_id,
         app_id=app_id,
-        actor=current_user.subject,
+        actor=current_user.actor_id,
         kubernetes_client=kubernetes_client,
     )
     return {

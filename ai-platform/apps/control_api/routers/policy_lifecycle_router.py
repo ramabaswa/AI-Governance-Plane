@@ -52,13 +52,13 @@ async def rollback_route(
         tenant_id=tenant_id,
         route_id=route_id,
         revision_number=request.source_revision,
-        actor=user.subject,
+        actor=user.actor_id,
     )
     result = route_service.apply_route(
         session,
         tenant_id=tenant_id,
         route_id=route_id,
-        actor=user.subject,
+        actor=user.actor_id,
         reconciler=AgentgatewayReconciler(kubernetes_client),
     )
     return {"success": True, "data": result}

@@ -30,7 +30,7 @@ async def list_requests(
     return service.list_requests(
         session,
         tenant_id=tenant_id,
-        actor=user.subject,
+        actor=user.actor_id,
         reviewer=user.has_perm("onboarding:review"),
     )
 
@@ -45,7 +45,7 @@ async def submit_request(
     return service.submit_request(
         session,
         tenant_id=tenant_id,
-        actor=user.subject,
+        actor=user.actor_id,
         request=request,
     )
 
@@ -62,7 +62,7 @@ async def review_request(
         session,
         tenant_id=tenant_id,
         request_id=request_id,
-        actor=user.subject,
+        actor=user.actor_id,
         decision=decision,
     )
 
@@ -79,7 +79,7 @@ async def complete_request(
         session,
         tenant_id=tenant_id,
         request_id=request_id,
-        actor=user.subject,
+        actor=user.actor_id,
         kubernetes_client=kubernetes_client,
     )
     return {

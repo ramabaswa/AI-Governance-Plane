@@ -56,6 +56,7 @@ def seed_development_data() -> None:
         raise RuntimeError("Development data seeding is restricted to development and test environments")
 
     from features.persistence import ModelBackendRecord, TenantMembershipRecord, TenantRecord
+    from shared.authorization.jwt_handler import DEVELOPMENT_ISSUER
     from shared.authorization.roles import Role
 
     now = int(time.time())
@@ -74,6 +75,7 @@ def seed_development_data() -> None:
                     updated_at=now,
                     is_active=True,
                 ))
+        session.flush()
 
         memberships = {
             ("admin@acme.internal", "tenant-acme"): [Role.TENANT_ADMIN.value],
@@ -84,12 +86,14 @@ def seed_development_data() -> None:
         for (subject, tenant_id), roles in memberships.items():
             existing = session.scalar(
                 select(TenantMembershipRecord.id).where(
+                    TenantMembershipRecord.issuer == DEVELOPMENT_ISSUER,
                     TenantMembershipRecord.subject == subject,
                     TenantMembershipRecord.tenant_id == tenant_id,
                 )
             )
             if existing is None:
                 session.add(TenantMembershipRecord(
+                    issuer=DEVELOPMENT_ISSUER,
                     subject=subject,
                     tenant_id=tenant_id,
                     roles=roles,

@@ -44,6 +44,23 @@ services:
     networks:
       - governance-net
 
+  reconciliation-worker:
+    build:
+      context: ../..
+      dockerfile: deploy/local/Dockerfile.api
+    command: ["python", "-m", "apps.worker.reconciliation_worker"]
+    environment:
+      ENVIRONMENT: development
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL for PostgreSQL}
+      AGENTGATEWAY_NAMESPACE: agentgateway-system
+      AGENTGATEWAY_GATEWAY_NAME: ai-gateway
+      RECONCILE_INTERVAL: "15"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - governance-net
+
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.119.0
     command: ["--config=/etc/otelcol-contrib/config.yaml"]
@@ -59,6 +76,7 @@ services:
 
   tempo:
     image: grafana/tempo:2.7.2
+    user: "0:0"
     command: ["-config.file=/etc/tempo.yaml"]
     volumes:
       - ./tempo.yaml:/etc/tempo.yaml:ro

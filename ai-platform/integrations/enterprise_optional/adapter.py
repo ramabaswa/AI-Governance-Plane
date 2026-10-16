@@ -13,9 +13,9 @@ class EnterpriseOptionalAdapter:
 
     @staticmethod
     def get_extended_pricing_catalog() -> Dict[str, Any]:
-        """Fetch enterprise pricing catalog if available, else default pricing."""
+        """Return explicit unavailability until a real enterprise adapter is configured."""
         return {
-            "enterprise_active": EnterpriseOptionalAdapter.is_enterprise_enabled(),
-            "tier": "enterprise" if EnterpriseOptionalAdapter.is_enterprise_enabled() else "standard_oss",
-            "sla": "99.99%" if EnterpriseOptionalAdapter.is_enterprise_enabled() else "best_effort",
+            "status": "not_configured",
+            "pricing_catalog": None,
+            "sla": None,
         }

@@ -1,12 +1,15 @@
 """Tests for the pinned Kubernetes-only agentgateway resource translator."""
 
 import yaml
+import pytest
 
 from integrations.agentgateway.translator import (
     AgentgatewayDeclarativeTranslator,
 )
 from shared.contracts.model import ModelBackend, ProviderType
 from shared.contracts.route import DLPAction, GatewayRoute, PromptGuardRule
+from shared.errors.exceptions import ValidationError
+from integrations.agentgateway.crd_schema import validate_generated_resource
 
 
 def _models():
@@ -66,6 +69,8 @@ def test_translator_generates_backend_route_and_guard_policy_crds():
         "name": "anthropic-secret",
         "key": "api-key",
     }
+    assert set(backend["spec"]["ai"]) == {"provider"}
+    assert set(backend["spec"]["policies"]) == {"auth"}
 
     route = by_kind["HTTPRoute"]
     assert route["apiVersion"] == "gateway.networking.k8s.io/v1"
@@ -84,6 +89,39 @@ def test_translator_generates_backend_route_and_guard_policy_crds():
         "matches": [r"\b4[0-9]{12}(?:[0-9]{3})?\b"],
         "action": "Mask",
     }
+
+
+def test_translator_maps_domain_block_action_to_agentgateway_reject():
+    route = _route().model_copy(update={
+        "dlp_rules": [
+            PromptGuardRule(
+                name="block-sensitive",
+                regex_patterns=[r"secret"],
+                action=DLPAction.BLOCK,
+            ),
+        ],
+    })
+    resources = AgentgatewayDeclarativeTranslator.generate_kubernetes_resources(
+        [route],
+        _models(),
+    )
+    policy = next(resource for resource in resources if resource["kind"] == "AgentgatewayPolicy")
+    action = policy["spec"]["backend"]["ai"]["promptGuard"]["request"][0]["regex"]["action"]
+    assert action == "Reject"
+
+
+def test_translator_rejects_provider_not_supported_by_pinned_release():
+    models = _models()
+    models["model-1"] = models["model-1"].model_copy(update={"provider": ProviderType.VLLM})
+    with pytest.raises(ValidationError, match="not supported by agentgateway v1.6.0"):
+        AgentgatewayDeclarativeTranslator.generate_kubernetes_resources([_route()], models)
+
+
+def test_crd_contract_validator_rejects_unknown_backend_fields():
+    backend = AgentgatewayDeclarativeTranslator.generate_kubernetes_resources([_route()], _models())[0]
+    backend["spec"]["ai"]["policies"] = {}
+    with pytest.raises(ValidationError, match="does not match v1.6.0 schema"):
+        validate_generated_resource(backend)
 
 
 def test_yaml_output_contains_only_generated_kubernetes_resources():

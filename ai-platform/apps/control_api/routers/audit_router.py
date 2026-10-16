@@ -24,4 +24,4 @@ async def list_audit_events(
     session: Session = Depends(get_db_session),
 ):
     """Read the tenant audit chain; this query is itself recorded in that chain."""
-    return list_events(session, tenant_id=tenant_id, actor=current_user.subject, limit=limit)
+    return list_events(session, tenant_id=tenant_id, actor=current_user.actor_id, limit=limit)

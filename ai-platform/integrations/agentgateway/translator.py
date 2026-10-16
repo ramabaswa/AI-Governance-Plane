@@ -13,11 +13,23 @@ from shared.errors.exceptions import ValidationError
 from shared.validation.regex_validator import validate_dlp_regex
 from shared.validation.route_validator import validate_path_prefix, validate_traffic_weights
 from features.application_agent_registry.naming import tenant_fingerprint
+from integrations.agentgateway.crd_schema import AGENTGATEWAY_RELEASE, validate_generated_resource
 
 API_VERSIONS = {
     "HTTPRoute": "gateway.networking.k8s.io/v1",
     "AgentgatewayBackend": "agentgateway.dev/v1alpha1",
     "AgentgatewayPolicy": "agentgateway.dev/v1alpha1",
+}
+AGENTGATEWAY_TARGET_RELEASE = AGENTGATEWAY_RELEASE
+_PROVIDER_FIELDS = {
+    "anthropic": "anthropic",
+    "bedrock": "bedrock",
+    "gemini": "gemini",
+    "openai": "openai",
+}
+_PROMPT_GUARD_ACTIONS = {
+    "Mask": "Mask",
+    "Block": "Reject",
 }
 
 
@@ -70,6 +82,17 @@ class AgentgatewayDeclarativeTranslator:
                 raise ValidationError(f"Weighted model '{model_id}' is not active and approved")
             if model.base_url:
                 raise ValidationError("Custom provider endpoint overrides are not supported")
+            provider_field = _PROVIDER_FIELDS.get(model.provider.value)
+            if provider_field is None:
+                raise ValidationError(
+                    f"Provider '{model.provider.value}' is not supported by agentgateway "
+                    f"{AGENTGATEWAY_TARGET_RELEASE}",
+                    details=[{
+                        "field": "provider",
+                        "provider": model.provider.value,
+                        "agentgateway_release": AGENTGATEWAY_TARGET_RELEASE,
+                    }],
+                )
             tenants = {route.tenant_id for route in routes if model_id in (route.traffic_weights or {route.backend_model_id: 100})}
             if tenants != {model.tenant_id}:
                 raise ValidationError(f"Weighted model '{model_id}' is not approved for the route tenant")
@@ -99,7 +122,7 @@ class AgentgatewayDeclarativeTranslator:
                 "spec": {
                     "ai": {
                         "provider": {
-                            model.provider.value: {
+                            provider_field: {
                                 "model": model.model_name,
                             },
                         },
@@ -169,8 +192,14 @@ class AgentgatewayDeclarativeTranslator:
 
             request_rules = []
             for rule in route.dlp_rules:
+                action = _PROMPT_GUARD_ACTIONS.get(rule.action.value)
+                if action is None:
+                    raise ValidationError(
+                        f"Prompt guard action '{rule.action.value}' is not supported by "
+                        f"agentgateway {AGENTGATEWAY_TARGET_RELEASE}"
+                    )
                 request_rules.extend(
-                    {"regex": {"matches": [pattern], "action": rule.action.value}}
+                    {"regex": {"matches": [pattern], "action": action}}
                     for pattern in rule.regex_patterns
                 )
             allowed_model_expressions = [
@@ -231,6 +260,8 @@ class AgentgatewayDeclarativeTranslator:
                 },
             })
 
+        for resource in resources:
+            validate_generated_resource(resource)
         return resources
 
     @classmethod

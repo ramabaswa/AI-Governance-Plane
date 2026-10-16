@@ -26,7 +26,8 @@ def test_model_catalog_is_tenant_scoped_and_rejects_duplicate_names():
             request=_model(),
         )
         assert created.tenant_id == "tenant-acme"
-        assert [model.id for model in service.list_models(session, "tenant-acme")] == [created.id]
+        acme_models = service.list_models(session, "tenant-acme")
+        assert {model.id for model in acme_models} == {created.id, "model-test"}
         assert service.list_models(session, "tenant-globex") == []
         with pytest.raises(ResourceConflictError):
             service.create_model(

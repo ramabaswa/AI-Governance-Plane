@@ -30,11 +30,13 @@ class TenantMember(BaseModel):
 
 
 class TenantMembershipCreate(BaseModel):
+    issuer: str = Field(..., min_length=1, max_length=512)
     subject: str = Field(..., min_length=1, max_length=255)
     roles: List[Role] = Field(..., min_length=1)
 
 
 class TenantMembership(BaseModel):
+    issuer: str
     subject: str
     tenant_id: str
     roles: List[Role]

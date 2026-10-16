@@ -69,7 +69,7 @@ async def create_route(
     return service.create_route(
         session,
         tenant_id=tenant_id,
-        actor=current_user.subject,
+        actor=current_user.actor_id,
         request=req,
     )
 
@@ -87,7 +87,7 @@ async def apply_route(
         session,
         tenant_id=tenant_id,
         route_id=route_id,
-        actor=current_user.subject,
+        actor=current_user.actor_id,
         reconciler=AgentgatewayReconciler(kubernetes_client),
     )
     return {"success": True, "data": status}

@@ -14,6 +14,7 @@ from features.application_agent_registry.service import (
 from features.guardrails.service import validate_prompt_guard_rules
 from features.policy_lifecycle import service as policy_lifecycle_service
 from features.persistence import GatewayRouteRecord, ModelBackendRecord
+from integrations.agentgateway.translator import AgentgatewayDeclarativeTranslator
 from integrations.agentgateway.reconciler import AgentgatewayReconciler
 from shared.contracts.audit import AuditAction
 from shared.contracts.model import ModelBackend
@@ -102,6 +103,30 @@ def create_route(
 
     now = int(time.time())
     route_id = f"route-{uuid.uuid4().hex[:12]}"
+    candidate = GatewayRoute(
+        id=route_id,
+        tenant_id=tenant_id,
+        name=request.name,
+        path_prefix=request.path_prefix,
+        backend_model_id=request.backend_model_id,
+        failover_model_ids=[],
+        traffic_weights=weights,
+        dlp_rules=request.dlp_rules,
+        rate_limit_rpm=None,
+        revision_id=1,
+        lifecycle_state="draft",
+        created_at=now,
+        updated_at=now,
+    )
+    models_by_id = {
+        model.id: ModelBackend.model_validate(model, from_attributes=True)
+        for model in models
+    }
+    AgentgatewayDeclarativeTranslator.generate_kubernetes_resources(
+        [candidate],
+        models_by_id,
+    )
+
     row = GatewayRouteRecord(
         id=route_id,
         tenant_id=tenant_id,

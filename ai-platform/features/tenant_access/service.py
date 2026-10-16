@@ -80,6 +80,7 @@ def create_membership(
     existing = session.scalar(
         select(TenantMembershipRecord).where(
             TenantMembershipRecord.tenant_id == tenant_id,
+            TenantMembershipRecord.issuer == request.issuer,
             TenantMembershipRecord.subject == request.subject,
         )
     )
@@ -87,6 +88,7 @@ def create_membership(
         raise ResourceConflictError("Subject already has a membership in this tenant")
     row = TenantMembershipRecord(
         tenant_id=tenant_id,
+        issuer=request.issuer,
         subject=request.subject,
         roles=[role.value for role in request.roles],
         created_at=int(time.time()),
@@ -98,7 +100,7 @@ def create_membership(
         actor=actor,
         action=AuditAction.MEMBERSHIP_CREATED,
         resource_type="tenant_membership",
-        resource_id=f"{tenant_id}:{request.subject}",
+        resource_id=f"{tenant_id}:{request.issuer}:{request.subject}",
         details={"roles": [role.value for role in request.roles]},
     )
     session.flush()
@@ -109,7 +111,7 @@ def list_memberships(session: Session, tenant_id: str) -> list[TenantMembership]
     rows = session.scalars(
         select(TenantMembershipRecord)
         .where(TenantMembershipRecord.tenant_id == tenant_id)
-        .order_by(TenantMembershipRecord.subject)
+        .order_by(TenantMembershipRecord.issuer, TenantMembershipRecord.subject)
     ).all()
     return [TenantMembership.model_validate(row, from_attributes=True) for row in rows]
 
@@ -125,11 +127,12 @@ def update_membership(
     row = session.scalar(
         select(TenantMembershipRecord).where(
             TenantMembershipRecord.tenant_id == tenant_id,
+            TenantMembershipRecord.issuer == request.issuer,
             TenantMembershipRecord.subject == subject,
         )
     )
     if row is None:
-        raise ResourceNotFoundError("Tenant membership", f"{tenant_id}:{subject}")
+        raise ResourceNotFoundError("Tenant membership", f"{tenant_id}:{request.issuer}:{subject}")
     if request.subject != subject:
         raise ValidationError("Membership subject in the request must match the URL")
     _validate_membership_roles(tenant_id, request.roles)
@@ -152,7 +155,7 @@ def update_membership(
         actor=actor,
         action=AuditAction.MEMBERSHIP_UPDATED,
         resource_type="tenant_membership",
-        resource_id=f"{tenant_id}:{subject}",
+        resource_id=f"{tenant_id}:{row.issuer}:{subject}",
         details={"from": sorted(old_roles), "to": sorted(new_roles)},
     )
     session.flush()

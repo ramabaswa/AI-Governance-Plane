@@ -7,9 +7,9 @@ def test_adapter_defaults_to_oss_capability(monkeypatch):
     catalog = EnterpriseOptionalAdapter.get_extended_pricing_catalog()
 
     assert catalog == {
-        "enterprise_active": False,
-        "tier": "standard_oss",
-        "sla": "best_effort",
+        "status": "not_configured",
+        "pricing_catalog": None,
+        "sla": None,
     }
 
 

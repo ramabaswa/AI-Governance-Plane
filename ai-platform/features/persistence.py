@@ -24,9 +24,12 @@ class TenantRecord(Base):
 
 class TenantMembershipRecord(Base):
     __tablename__ = "tenant_memberships"
-    __table_args__ = (UniqueConstraint("subject", "tenant_id", name="uq_membership_subject_tenant"),)
+    __table_args__ = (
+        UniqueConstraint("issuer", "subject", "tenant_id", name="uq_membership_issuer_subject_tenant"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    issuer: Mapped[str] = mapped_column(String(512), index=True, nullable=False)
     subject: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
     tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), index=True, nullable=False)
     roles: Mapped[list[str]] = mapped_column(JSON, nullable=False)

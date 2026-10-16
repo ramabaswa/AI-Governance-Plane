@@ -38,7 +38,7 @@ async def create_approval(
     return service.create_request(
         session,
         tenant_id=tenant_id,
-        actor=user.subject,
+        actor=user.actor_id,
         request=request,
     )
 
@@ -55,7 +55,7 @@ async def decide_approval(
         session,
         tenant_id=tenant_id,
         request_id=request_id,
-        actor=user.subject,
+        actor=user.actor_id,
         decision=request.decision,
         comments=request.comments,
     )

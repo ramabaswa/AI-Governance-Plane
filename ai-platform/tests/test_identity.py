@@ -1,6 +1,7 @@
 """Tests for OIDC JWT verification and database-authoritative roles."""
 
 import time
+import json
 from types import SimpleNamespace
 
 import jwt
@@ -69,6 +70,73 @@ def test_oidc_verification_rejects_invalid_signature(monkeypatch):
 
     with pytest.raises(UnauthorizedError):
         verify_oidc_token(_oidc_token(signing_key))
+
+
+def test_oidc_verification_selects_provider_by_exact_issuer(monkeypatch):
+    first_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    second_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    providers = {
+        "https://first.identity.example.test/": {
+            "audience": "first-api",
+            "jwks_url": "https://first.identity.example.test/jwks",
+            "algorithms": ["RS256"],
+        },
+        "https://second.identity.example.test/": {
+            "audience": "second-api",
+            "jwks_url": "https://second.identity.example.test/jwks",
+            "algorithms": ["RS256"],
+        },
+    }
+    keys = {
+        "https://first.identity.example.test/jwks": first_key.public_key(),
+        "https://second.identity.example.test/jwks": second_key.public_key(),
+    }
+    monkeypatch.setenv("OIDC_PROVIDERS_JSON", json.dumps(providers))
+    monkeypatch.delenv("OIDC_ISSUER", raising=False)
+    monkeypatch.delenv("OIDC_AUDIENCE", raising=False)
+    monkeypatch.delenv("OIDC_JWKS_URL", raising=False)
+    monkeypatch.setattr(
+        jwt,
+        "PyJWKClient",
+        lambda url, **_kwargs: SimpleNamespace(
+            get_signing_key_from_jwt=lambda _token: SimpleNamespace(key=keys[url])
+        ),
+    )
+    now = int(time.time())
+    token = jwt.encode(
+        {
+            "sub": "collision-prone-subject",
+            "iss": "https://second.identity.example.test/",
+            "aud": "second-api",
+            "iat": now,
+            "exp": now + 300,
+        },
+        second_key,
+        algorithm="RS256",
+        headers={"kid": "second-provider-key"},
+    )
+
+    claims = verify_oidc_token(token)
+
+    assert claims["iss"] == "https://second.identity.example.test/"
+
+
+def test_oidc_verification_rejects_unconfigured_issuer(monkeypatch):
+    monkeypatch.setenv("OIDC_PROVIDERS_JSON", json.dumps({
+        "https://configured.identity.example.test/": {
+            "audience": "governance-api",
+            "jwks_url": "https://configured.identity.example.test/jwks",
+            "algorithms": ["RS256"],
+        },
+    }))
+    token = jwt.encode(
+        {"iss": "https://unconfigured.identity.example.test/", "sub": "user"},
+        "not-used-for-unverified-issuer-selection",
+        algorithm="HS256",
+    )
+
+    with pytest.raises(UnauthorizedError, match="issuer is not configured"):
+        verify_oidc_token(token)
 
 
 def test_local_token_signing_requires_explicit_secret(monkeypatch):

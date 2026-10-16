@@ -91,6 +91,7 @@ def list_events(session: Session, *, tenant_id: str, actor: str, limit: int = 10
         resource_id="tenant",
         details={"limit": limit},
     )
+    session.flush()
     rows = session.scalars(
         select(AuditEventRecord)
         .where(AuditEventRecord.tenant_id == tenant_id)

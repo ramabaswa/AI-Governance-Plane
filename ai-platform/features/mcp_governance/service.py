@@ -168,8 +168,8 @@ def discover_tools(
             "name": tool["name"],
             "description": tool.get("description"),
             "input_schema": input_schema,
-            "is_sensitive": False,
-            "requires_hitl_approval": False,
+            "is_sensitive": True,
+            "requires_hitl_approval": True,
         })
     row.discovered_tools = normalized
     row.discovery_state = "discovered"

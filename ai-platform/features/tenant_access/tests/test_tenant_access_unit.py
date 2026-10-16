@@ -15,6 +15,7 @@ def test_platform_admin_role_cannot_be_assigned_to_tenant_membership():
                 tenant_id="tenant-acme",
                 actor="root",
                 request=TenantMembershipCreate(
+                    issuer="https://identity.example.test/",
                     subject="new-user",
                     roles=[Role.PLATFORM_ADMIN],
                 ),
@@ -28,10 +29,12 @@ def test_tenant_admin_membership_is_persisted_and_listed():
             tenant_id="tenant-acme",
             actor="root",
             request=TenantMembershipCreate(
+                issuer="https://identity.example.test/",
                 subject="new-user",
                 roles=[Role.DEVELOPER],
             ),
         )
         memberships = service.list_memberships(session, "tenant-acme")
         assert created.subject == "new-user"
+        assert created.issuer == "https://identity.example.test/"
         assert [membership.subject for membership in memberships] == ["new-user"]

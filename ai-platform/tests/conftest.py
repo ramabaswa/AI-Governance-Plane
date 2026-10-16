@@ -11,6 +11,7 @@ from apps.control_api.main import app
 from apps.control_api.dependencies import get_agentgateway_kubernetes_client
 from features.database import get_db_session
 from features.persistence import Base, ModelBackendRecord, TenantMembershipRecord, TenantRecord
+from shared.authorization.jwt_handler import DEVELOPMENT_ISSUER
 from shared.authorization.roles import Role
 
 
@@ -68,6 +69,7 @@ def api_client(tmp_path, monkeypatch):
             ("dev@globex.internal", "tenant-globex", [Role.DEVELOPER.value]),
         ):
             session.add(TenantMembershipRecord(
+                issuer=DEVELOPMENT_ISSUER,
                 subject=subject,
                 tenant_id=tenant_id,
                 roles=roles,
