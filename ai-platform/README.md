@@ -28,7 +28,7 @@ approval. See [MVP scope](docs/architecture/mvp-scope.md) and
 ## Requirements
 
 - Python 3.12 or later
-- PostgreSQL for durable use (SQLite is available for development/test)
+- PostgreSQL, configured through `DATABASE_URL`
 - Kubernetes credentials and the required Gateway API / agentgateway CRDs to
   apply and read gateway resources
 - An OIDC provider for non-development authentication
@@ -44,9 +44,18 @@ pip install -e ai-platform/
 ```
 
 The development identity endpoint and automatic sample-data/schema setup are
-enabled only when `ENVIRONMENT=development`. Configure a local `JWT_SECRET`
-before using development login. The database defaults to a local SQLite file
-only in development/test; `DATABASE_URL` is required in other environments.
+enabled only when `ENVIRONMENT=development`. Demo records are controlled by
+`DEMO_DATA_ENABLED` (defaults to `true` for development); set it to `false` to
+disable fixture seeding. The flag does not connect Entra, Entra Agent ID, Okta
+CIAM, CMDB, or ITSM. Those source integrations must be configured separately.
+Configure a local `JWT_SECRET` and PostgreSQL `DATABASE_URL` before using
+development login. Compose uses PostgreSQL.
+
+The showcase fixture includes an `identity_source_mappings` table with example
+Entra workforce group, Entra Agent ID, and Okta CIAM records mapped to plane
+workspaces. These rows are marked `is_demo=true`; they are illustrative records,
+not live identity authorization. The SQLAlchemy schema is managed through
+Alembic migrations for PostgreSQL.
 
 To use the bundled local services, create `ai-platform/.env` with local-only
 values (do not use production credentials):
@@ -54,6 +63,7 @@ values (do not use production credentials):
 ```dotenv
 POSTGRES_PASSWORD=replace-with-a-local-password
 DATABASE_URL=postgresql+psycopg://governance:replace-with-a-local-password@postgres:5432/ai_governance
+DEMO_DATA_ENABLED=true
 JWT_SECRET=replace-with-a-random-local-development-secret
 ```
 
@@ -63,15 +73,15 @@ Then run Compose from the repository root:
 docker compose --env-file ai-platform/.env -f ai-platform/deploy/local/docker-compose.yml up --build
 ```
 
-Compose starts PostgreSQL, applies Alembic migrations, then starts the Control
-API, console, OTel Collector, Tempo, and Prometheus. The API and worker wait
-for migrations to complete successfully. It does not start Kubernetes or
+Compose starts PostgreSQL, applies Alembic migrations, and starts the Control
+API, console, OTel Collector, Tempo, Prometheus, and reconciliation worker. It
+does not start Kubernetes or
 agentgateway. Route and key provisioning therefore require a separately configured Kubernetes cluster
 with the expected CRDs, namespace, service account permissions, and referenced
 secrets.
 
-For direct development, set `ENVIRONMENT=development`, provide `JWT_SECRET`,
-and optionally set `DATABASE_URL`; then start the API from `ai-platform/`:
+For direct development, set `ENVIRONMENT=development`, provide `JWT_SECRET` and
+`DATABASE_URL`; then start the API from `ai-platform/`:
 
 ```bash
 uvicorn apps.control_api.main:app --host 127.0.0.1 --port 8000 --reload

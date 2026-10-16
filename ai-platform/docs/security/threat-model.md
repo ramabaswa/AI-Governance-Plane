@@ -43,8 +43,7 @@ controller or gateway accepted the resource.
 
 - Use a production OIDC issuer, audience, and JWKS endpoint over trusted
   transport.
-- Set `DATABASE_URL` to a supported durable database. SQLite is selected by
-  default only in development/test.
+- Set `DATABASE_URL` to a supported durable database such as PostgreSQL.
 - Keep provider credentials in the referenced Kubernetes Secret system; the
   platform persists references, not provider secret plaintext.
 - Review the namespace-scoped writer Role and RoleBinding against the

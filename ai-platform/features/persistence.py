@@ -36,6 +36,28 @@ class TenantMembershipRecord(Base):
     created_at: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
 
+class IdentitySourceMappingRecord(Base):
+    """Demoable mapping from an external identity record to a plane workspace."""
+    __tablename__ = "identity_source_mappings"
+    __table_args__ = (
+        UniqueConstraint(
+            "source_system", "source_instance", "record_type", "external_id",
+            name="uq_identity_source_mapping_external_record",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    source_system: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    source_instance: Mapped[str] = mapped_column(String(512), nullable=False)
+    record_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    external_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    display_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), index=True, nullable=False)
+    roles: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    is_demo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
 class ApplicationRecord(Base):
     __tablename__ = "applications"
     __table_args__ = (UniqueConstraint("tenant_id", "name", name="uq_application_tenant_name"),)

@@ -11,7 +11,7 @@
 The v0.1.0 release consolidates the previous empty scaffold into a unified, tenant-isolated architecture.
 
 ### Schema Migration
-1. Ensure the PostgreSQL / SQLite database volume is mounted.
+1. Ensure the PostgreSQL database volume is mounted.
 2. Initialize tenant and role tables:
    ```bash
    python -m scripts.init_db

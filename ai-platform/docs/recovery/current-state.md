@@ -26,7 +26,7 @@ enforcement, and automated drift remediation remain unavailable.
 | Area | Source state | Not verified |
 |---|---|---|
 | Identity and tenant access | Generic OIDC token verification and persisted tenant memberships; local login is environment-gated. | Real identity-provider/JWKS behavior and production configuration. |
-| Persistence | SQLAlchemy schema, SQLite development fallback, PostgreSQL support, Alembic migrations for registry and governance workflows. Automatic schema creation/seeding is restricted to development/test. | Migration execution, PostgreSQL durability, backup/recovery. |
+| Persistence | SQLAlchemy schema with PostgreSQL and Alembic migrations for registry and governance workflows. Automatic schema creation/seeding is restricted to development/test. | Migration execution, PostgreSQL durability, backup/recovery. |
 | Application keys | Raw keys are returned once; SHA-256 verifier hashes are stored; ConfigMap provisioning and revocation states are explicit. | Kubernetes apply/read behavior, gateway acceptance, revocation propagation, failure cleanup. |
 | Gateway resources | Translator emits Kubernetes Gateway API and agentgateway resources; Kubernetes server-side apply and status read-back replace the former direct admin apply flow. | Live CRD compatibility, controller conditions, runtime route enforcement, end-to-end inference. |
 | Guardrails | Supported regex prompt-guard subset is translated; unsupported route capabilities are rejected. | Live policy enforcement and upstream-version compatibility. |

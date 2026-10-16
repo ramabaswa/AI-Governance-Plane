@@ -18,9 +18,9 @@ export JWT_SECRET="$(python -c 'import secrets; print(secrets.token_urlsafe(48))
 uvicorn apps.control_api.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-The API uses SQLite by default in development/test. Set `DATABASE_URL` to use
-a different database; it is required outside those environments. Development
-startup creates the schema and local sample records; production does not.
+The API requires `DATABASE_URL` in every environment; use PostgreSQL for local
+development and production. Development startup creates the schema and local
+sample records; production does not.
 Configure `JWT_SECRET` before local login; no built-in signing key is used.
 The local login endpoint is available only when `ENVIRONMENT=development`.
 

@@ -1,15 +1,16 @@
-"""Database configuration must not silently select SQLite outside test/dev."""
+"""Database configuration requires an explicit database URL."""
 
 import pytest
 
 from features.database import _database_url
 
 
-def test_database_uses_sqlite_by_default_in_development_and_test(monkeypatch):
+def test_database_requires_explicit_url_in_development_and_test(monkeypatch):
     monkeypatch.delenv("DATABASE_URL", raising=False)
     for environment in ("development", "test"):
         monkeypatch.setenv("ENVIRONMENT", environment)
-        assert _database_url().startswith("sqlite:")
+        with pytest.raises(RuntimeError, match="DATABASE_URL must be configured"):
+            _database_url()
 
 
 @pytest.mark.parametrize("environment", ("", "production", "staging", "prod"))
