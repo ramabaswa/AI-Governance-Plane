@@ -20,7 +20,7 @@ flowchart LR
         Gateway["Standalone agentgateway app"]
         Console --> API
         API <--> Worker
-        Worker -->|"private management API"| Gateway
+        Worker -->|"protected config-resource API on UI listener"| Gateway
     end
 
     DB[("Azure Database for PostgreSQL")]
@@ -46,7 +46,7 @@ flowchart LR
     CMDB -. "future adapter" .-> API
 ```
 
-The Control API does not receive, proxy, or make synchronous inference calls. The worker uses durable desired state to manage the private standalone gateway management interface. Do not let the worker write directly into agentgateway-owned database tables.
+The Control API does not receive, proxy, or make synchronous inference calls. The worker uses durable desired state to publish through a protected standalone config-resource API on a UI-enabled listener. The unauthenticated admin API stays loopback-only. Do not let the worker write directly into agentgateway-owned database tables.
 
 ## 2. Deployment responsibilities and trust boundaries
 
@@ -54,15 +54,17 @@ The Control API does not receive, proxy, or make synchronous inference calls. Th
 |---|---|
 | Control API/console | Authenticated management ingress; validates OIDC identity, tenant membership, request authorization, approvals, and governance data |
 | Reconciliation worker | Internal ACA app; one replica until the code has an atomic DB lease/claim; only app allowed to publish gateway configuration |
-| Standalone agentgateway | Separate ACA app with private management endpoint and traffic ingress; owns active runtime configuration and request-time behavior |
+| Standalone agentgateway | Separate ACA app with agent traffic ingress and a separately protected config-resource API listener; owns active runtime configuration and request-time behavior |
 | Plane PostgreSQL | Plane-owned desired state, tenant/membership records, approvals, audit and reconciliation outbox |
 | Key Vault | Source of provider and app secrets; store references in Plane records, not plaintext |
 | ACA managed identities | Separate API, worker and gateway workload identities; least privilege to Azure resources |
 | APIM | Optional first hop for enterprise edge controls; not a replacement for gateway runtime policy |
 
-Use Azure Database for PostgreSQL Flexible Server with private networking. Keep the standalone gateway admin API bound to loopback; it has no authentication and must not be exposed to the worker or public ingress. The supported config-resource API can be served on a UI-enabled traffic listener. Protect that listener with an authentication policy and private network access, and give the worker a supported identity-token flow before allowing writes. This authenticated publishing flow is not implemented yet. Enable external agent traffic only for selected paths. A private network location is not a substitute for identity and authorization.
+Use Azure Database for PostgreSQL Flexible Server with private networking. Keep the standalone gateway admin API bound to loopback; it has no authentication and must not be exposed to the worker or public ingress. The supported config-resource API can be served on a UI-enabled listener; `ui.policies` supports programmatic JWT, basic, or API-key authentication in addition to browser OIDC. Protect a dedicated management listener with authentication policy and network restrictions, and implement the worker credential/token flow before allowing writes. This authenticated publishing flow is not implemented yet. Enable external agent traffic only for selected paths. A private network location is not a substitute for identity and authorization.
 
 Human identities authenticate to the Plane through configured OIDC (for example Entra or Okta). ACA managed identity is a workload identity for service-to-service access; it is not the user's SSO token. The gateway can use its own ACA managed identity for Azure OpenAI where supported by the selected agentgateway release. These identity flows are separate.
+
+For ACA networking, set the environment to internal-only when APIM and direct callers must use private VNet connectivity. In that environment, app ingress must be `external` for callers outside the ACA environment to reach it; app ingress `internal` permits only same-environment callers. The `external` app setting does not expose an app to the public internet when the managed environment itself is internal. The deployment script checks this distinction for the Plane API.
 
 ## 3. Traffic entry and exit points
 
@@ -72,7 +74,7 @@ Human identities authenticate to the Plane through configured OIDC (for example 
 
 **Runtime path 2:** approved private agent → standalone agentgateway → the same approved backend set.
 
-**Management exit:** API/worker → private agentgateway management API, PostgreSQL, Key Vault, OIDC discovery/JWKS, and configured telemetry endpoints.
+**Management exit:** API/worker → PostgreSQL, Key Vault, OIDC discovery/JWKS, and configured telemetry endpoints; the worker publishes to the protected config-resource API on a UI-enabled gateway listener.
 
 **Runtime exits:** agentgateway → allowlisted model-provider and MCP endpoints. Deny direct client-to-backend paths. Use network egress controls as well as application-level allowlists.
 
@@ -80,7 +82,7 @@ Path 2 is optional. Both paths share gateway-side authentication, authorization,
 
 ## 4. Configuration management and lifecycle
 
-The Governance Plane PostgreSQL database is the source of record for governance intent and workflow history. The active runtime configuration is owned by standalone agentgateway. A versioned worker publishes supported resources through agentgateway's supported management/configuration API and reads back the effective configuration/health. It does not edit agentgateway database tables.
+The Governance Plane PostgreSQL database is the source of record for governance intent and workflow history. The active runtime configuration is owned by standalone agentgateway. A versioned worker publishes supported resources through agentgateway's protected config-resource API and reads back effective configuration/health. It does not edit agentgateway database tables or expose the unauthenticated loopback admin API.
 
 ```mermaid
 sequenceDiagram
@@ -96,13 +98,13 @@ sequenceDiagram
     API->>DB: Save desired revision, audit event and outbox item atomically
     API-->>Owner: Return revision as pending
     Worker->>DB: Claim outbox item with lease
-    Worker->>Gateway: Publish supported configuration over private API
+    Worker->>Gateway: Publish through protected config-resource API
     Gateway->>Gateway: Validate, persist and reload runtime state
     Worker->>Gateway: Read effective config and health
     Worker->>DB: Record observed revision and diagnostics
 ```
 
-Use explicit lifecycle states: `draft` → `approved` (where required) → `pending` → `submitted` → `observed` → `runtime_verified`. A management API 2xx response means submitted only. Readback must be tied to the same desired revision. Runtime verification needs a representative request through the traffic ingress. Keep retries idempotent, leased, bounded, and auditable. Do not report standalone observations using Kubernetes controller condition terminology.
+Use explicit lifecycle states: `draft` → `approved` (where required) → `pending` → `submitted` → `observed` → `runtime_verified`. A config-resource API 2xx response means submitted only. Readback must be tied to the same desired revision. Runtime verification needs a representative request through the traffic ingress. Keep retries idempotent, leased, bounded, and auditable. Do not report standalone observations using Kubernetes controller condition terminology.
 
 ### Current transition gap
 
@@ -116,7 +118,7 @@ The code still emits `HTTPRoute`, `AgentgatewayBackend`, and `AgentgatewayPolicy
 | Tenant access | Plane authorization store unless an explicit external authorization adapter is selected | Resolve `(issuer, subject, tenant)` memberships; never trust client role claims or tenant headers alone |
 | Agent/application ownership and lifecycle | CMDB/agent inventory where enterprise policy requires it | Store external IDs and a governed projection; CMDB adapter remains future work |
 | Change ticket and approvals | ITSM for enterprise change process; Plane approval ledger for built-in workflows | Link ticket/evidence IDs; block protected changes until required approval is proven |
-| Gateway runtime configuration | Standalone agentgateway active config | Publish via supported management API; read back active/effective state |
+| Gateway runtime configuration | Standalone agentgateway active config | Publish via protected config-resource API; read back active/effective state |
 | Provider and app credentials | Key Vault or selected enterprise secret store | Persist references only; gateway must retrieve credentials securely |
 | Azure resource compliance | Azure Policy | Deployment/resource compliance, not a per-request decision |
 | Relationships | OpenFGA if selected | Use an explicit management or runtime decision contract |

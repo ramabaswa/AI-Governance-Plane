@@ -20,7 +20,7 @@ flowchart LR
         Gateway["Standalone agentgateway app"]
         Console --> API
         API <--> Worker
-        Worker -->|"private management API"| Gateway
+        Worker -->|"protected config-resource API on UI listener"| Gateway
     end
 
     PG[("Azure Database for PostgreSQL")]
@@ -49,19 +49,21 @@ flowchart LR
     CMDB -. "future adapters" .-> API
 ```
 
-The Governance Plane and gateway should use separate ACA apps and managed identities. The gateway receives agent requests and calls approved model/MCP destinations. The Plane handles user/API management requests, persists desired state and audit records in PostgreSQL, and publishes supported changes to the gateway over private networking. Entra/Okta user sign-in is separate from ACA managed identity, which authenticates workloads to Azure resources.
+The Governance Plane and gateway should use separate ACA apps and managed identities. The gateway receives agent requests and calls approved model/MCP destinations. The Plane handles user/API management requests, persists desired state and audit records in PostgreSQL, and publishes supported changes through a protected config-resource API exposed on a UI-enabled gateway listener. The unauthenticated admin listener stays loopback-only. Entra/Okta user sign-in is separate from ACA managed identity, which authenticates workloads to Azure resources.
 
 ## Entry and exit points
 
+For ACA, app ingress `internal` restricts access to callers inside the same Container Apps environment. To allow APIM or approved private callers from the VNet, use an internal-only ACA environment and app ingress `external`; in that environment the app is exposed to the VNet through its internal load balancer, not the public internet. The deployment script checks this before choosing external app ingress for the Control API.
+
 | Flow | Entry | Exit | Boundary |
 |---|---|---|---|
-| Governance users | APIM or secured ACA ingress to the console/API | PostgreSQL, configured OIDC/JWKS endpoints, Key Vault, telemetry, and the private gateway management API | OIDC users are authorized by the Plane's tenant membership model. The Plane API is not an inference proxy. |
+| Governance users | APIM or secured ACA ingress to the console/API | PostgreSQL, configured OIDC/JWKS endpoints, Key Vault, telemetry, and the protected gateway config-resource API | OIDC users are authorized by the Plane's tenant membership model. The Plane API is not an inference proxy. |
 | Agent traffic through APIM | Agent → APIM | APIM → private gateway ingress → approved model/MCP service | APIM is optional. It adds edge controls; the gateway remains the runtime policy/enforcement point. |
 | Direct private agent traffic | Approved private workload → private gateway ingress | Gateway → approved model/MCP service | Direct ingress must enforce the same minimum gateway identity and policy baseline as the APIM path. |
-| Reconciliation | Plane worker reads durable desired state from PostgreSQL | Private agentgateway standalone management/configuration API | This is the target ACA integration. The current worker uses Kubernetes and must be replaced. |
+| Reconciliation | Plane worker reads durable desired state from PostgreSQL | Protected config-resource API on a UI-enabled gateway listener | This is the target ACA integration. The current worker uses Kubernetes and must be replaced. |
 | Operations | Operators access Azure control plane, logs, and alerts | ACA, PostgreSQL, Key Vault, APIM, agentgateway, and model-provider diagnostics | Azure Monitor evidence and gateway request evidence must remain distinguishable. |
 
-Do not expose agentgateway's management/admin endpoints through the public agent ingress. Keep the management endpoint private and restrict it to the Plane worker. Protect both the gateway traffic endpoint and the Plane API with the selected authentication design; private networking alone is not authorization.
+Do not expose agentgateway's unauthenticated admin endpoint through the agent ingress or to the worker; keep it bound to loopback. If the worker publishes through the config-resource API, expose that API on a UI-enabled listener protected by a programmatic policy (for example JWT or API key) and network restrictions. Protect the Plane API with its own authentication design; private networking alone is not authorization.
 
 ## Desired configuration lifecycle
 
@@ -72,7 +74,7 @@ sequenceDiagram
     participant API as Governance Control API
     participant DB as Plane PostgreSQL
     participant Worker as ACA reconciliation worker
-    participant GW as Standalone agentgateway management API
+    participant GW as Protected agentgateway config-resource API
     participant Runtime as Agentgateway runtime
 
     Owner->>API: Submit tenant-scoped model/route/key/policy intent
@@ -80,7 +82,7 @@ sequenceDiagram
     API->>DB: Persist versioned desired state and audit event
     API-->>Owner: Return desired revision (not runtime-active)
     Worker->>DB: Claim pending revision
-    Worker->>GW: Publish supported configuration through private management API
+    Worker->>GW: Publish supported configuration through protected config-resource API
     GW->>GW: Validate and persist configuration; reload runtime
     Worker->>GW: Read effective configuration and runtime health
     Worker->>DB: Record published/observed evidence for that revision
@@ -101,7 +103,7 @@ The repository currently writes Kubernetes resources synchronously and reads con
 | CMDB, ITSM, OpenFGA, OPA | Their respective systems remain authoritative for their records/decisions; adapters are not currently implemented. |
 | Request logs and traces | Gateway/ACA telemetry destinations; do not infer runtime usage from Plane audit events. |
 
-Keep the Plane database distinct from agentgateway's configuration database/schema. The worker should use agentgateway's supported management API and must not write directly into agentgateway-owned tables. Pin an agentgateway release and verify the standalone API contract and supported resource kinds against that release.
+Keep the Plane database distinct from agentgateway's configuration database/schema. The worker should use agentgateway's supported config-resource API and must not write directly into agentgateway-owned tables. Pin an agentgateway release and verify the standalone API contract and supported resource kinds against that release.
 
 ## Ingress paths
 
@@ -122,7 +124,7 @@ The current runtime integration is not ACA-compatible yet:
 
 The repository now includes an initial Bicep package for the API and worker apps in an existing ACA environment. It does not provision networking, PostgreSQL, standalone agentgateway, or a migration job. The target still needs a secure standalone config-resource access path, a release-pinned standalone translator/client, runtime secret handling, and a durable reconciliation outbox with retry/lease semantics. Until those exist and are validated, deploying the Plane apps to ACA does **not** complete the gateway integration.
 
-Agentgateway's standalone admin API has no authentication and defaults to loopback. Keep it there. The config-resource API is also served by the UI when UI serving is configured; a protected UI gateway endpoint can be used for service publishing only after the worker can obtain and present an accepted identity token. That authenticated publishing flow is not implemented in this repository. Network isolation alone must not be documented as authorization.
+Agentgateway's standalone admin API has no authentication and defaults to loopback. Keep it there. The config-resource API is also served on gateways listed under `ui.gateways`; the UI policy can use programmatic JWT, basic, or API-key authentication. The Plane still needs an implemented credential/token flow, a dedicated UI listener, and verified API authorization before service publishing is enabled. Network isolation alone must not be documented as authorization.
 
 ## Existing feature boundaries retained
 

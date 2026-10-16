@@ -100,7 +100,7 @@ An initial ACA Bicep package at `deploy/azure/container-apps` deploys the Plane
 API and worker into an existing ACA environment. It does not provision the
 network, PostgreSQL, or standalone AgentGateway, and it does not make the
 current Kubernetes-based gateway adapter work on ACA. A release-pinned
-standalone configuration publisher, protected management API path, runtime
+standalone configuration publisher, protected config-resource API path, runtime
 readback, and migration job are still required before the target can be used
 end to end. Do not use the Kubernetes manifests as ACA deployment
 instructions.

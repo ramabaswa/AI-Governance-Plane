@@ -1,6 +1,6 @@
 # Azure Container Apps deployment
 
-This deployment template creates the Governance Plane Control API and its background reconciliation worker as separate Azure Container Apps. It expects an existing Container Apps managed environment, PostgreSQL database, Key Vault, and built container images.
+This deployment template creates the Governance Plane Control API and its background reconciliation worker as separate Azure Container Apps. It expects an existing Container Apps managed environment, PostgreSQL database, Key Vault, Azure Container Registry, and built container images.
 
 ## Current integration status
 
@@ -10,17 +10,20 @@ AgentGateway's standalone admin API is unauthenticated and must stay bound to lo
 
 ## Prerequisites
 
-- An ACA managed environment with network access to PostgreSQL and Key Vault.
+- An ACA managed environment with network access to PostgreSQL and Key Vault. For APIM or direct VNet callers outside the ACA environment, use an **internal ACA environment** and external app ingress; the deployment script checks the environment's internal flag. External app ingress in an external ACA environment can publish the app publicly. Setting app ingress to internal restricts callers to the same ACA environment.
 - A PostgreSQL database with the Plane Alembic migrations applied (`alembic upgrade head`).
 - A Key Vault using Azure RBAC, with versioned secrets named by the supplied secret URIs:
-  - PostgreSQL SQLAlchemy URL as `DATABASE_SECRET_URI`.
-  - A production `JWT_SECRET` of at least 32 characters as `JWT_SECRET_URI`.
+  - PostgreSQL SQLAlchemy URL as `DATABASE_SECRET_URI`, with its secret name as `DATABASE_SECRET_NAME`.
 - OIDC verification settings in `OIDC_PROVIDERS_JSON`, for example `{"https://issuer.example/":{"audience":"governance-api","jwks_url":"https://issuer.example/.well-known/jwks.json","algorithms":["RS256"]}}`. This config has no client secret; user access tokens are verified by issuer, audience, and JWKS.
-- API and worker images pushed to a registry accessible to the managed environment.
-- The deployer must be allowed to create user-assigned identities and role assignments at the Key Vault scope. The template grants each app identity `Key Vault Secrets User` on that vault.
+- Reachable OTLP HTTP endpoints for traces and metrics. Production API startup fails when either `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` or `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` is missing. Optional `TEMPO_QUERY_URL` and `PROMETHEUS_QUERY_URL` enable read-side dashboards only.
+- API and worker images pushed to the supplied Azure Container Registry. The template configures each app identity for image pulls and grants `AcrPull` on that registry.
+- The deployer must be allowed to create user-assigned identities and role assignments at the database-secret and ACR scopes. The template grants each app identity `Key Vault Secrets User` only on the PostgreSQL URL secret and `AcrPull` on the registry.
 - The managed environment's network and ingress design must permit the intended APIM and private caller paths.
+- The ACA environment, Key Vault, and ACR must be in the deployment subscription. Use an ACR configured for standard RBAC registry permissions; ABAC repository-permission registries need a different role assignment.
 
-The template creates separate user-assigned managed identities for API and worker. The API ingress defaults to `internal`; APIM and direct private callers need network connectivity to the managed environment. Set `CONTROL_API_INGRESS=external` only when the environment and upstream access controls are deliberately designed for public ingress.
+The template creates separate user-assigned managed identities for API and worker. Direct Bicep deployments default to internal app ingress, which allows only same-environment callers. The deployment script defaults to external app ingress so APIM and private VNet callers can reach the app through an internal ACA environment's load balancer; it rejects that setting for an external ACA environment. To use an external ACA environment, set `CONTROL_API_INGRESS=internal`; then only other apps in that same environment can call the API unless environment-level routing is configured.
+
+When deploying Bicep directly, set `location` to the existing ACA environment's location. The template does not deploy the environment itself.
 
 ## Deploy
 
@@ -39,15 +42,18 @@ Then deploy the app resources:
 RESOURCE_GROUP=<resource-group> \
 MANAGED_ENVIRONMENT_ID=<aca-environment-resource-id> \
 KEY_VAULT_ID=<key-vault-resource-id> \
+DATABASE_SECRET_NAME=<postgres-url-secret-name> \
+CONTAINER_REGISTRY_ID=<acr-resource-id> \
 DATABASE_SECRET_URI=<versioned-database-secret-uri> \
-JWT_SECRET_URI=<versioned-jwt-secret-uri> \
 OIDC_PROVIDERS_JSON='{"https://issuer.example/":{"audience":"governance-api","jwks_url":"https://issuer.example/.well-known/jwks.json","algorithms":["RS256"]}}' \
+OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=<reachable-otlp-http-traces-endpoint> \
+OTEL_EXPORTER_OTLP_METRICS_ENDPOINT=<reachable-otlp-http-metrics-endpoint> \
 CONTROL_API_IMAGE=<registry>/ai-governance-plane/api:<tag> \
 WORKER_IMAGE=<registry>/ai-governance-plane/worker:<tag> \
 ai-platform/deploy/azure/container-apps/deploy.sh
 ```
 
-The script does not print secret values; it passes only Key Vault secret URIs to Bicep. The database must already be migrated before the API's `/readyz` probe succeeds. Apply schema migrations as a controlled release step before switching API traffic.
+The script does not print secret values; it passes only Key Vault secret URIs to Bicep. The deployer creates role assignments for the app identities at the Key Vault and ACR scopes; Azure RBAC propagation can delay secret resolution or image pulls briefly. The database must already be migrated before the API's `/readyz` probe succeeds. Apply schema migrations as a controlled release step before switching API traffic. This package does not create or run a migration job.
 
 ## Traffic paths
 

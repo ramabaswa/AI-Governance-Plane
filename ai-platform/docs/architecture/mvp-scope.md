@@ -5,21 +5,21 @@
 
 ## Product boundary
 
-The Governance Plane is a management and audit system. Agent inference travels through agentgateway and directly to approved model/MCP services. The Plane stores tenant-scoped intent, validates and approves changes, then publishes supported gateway configuration through a private management interface. PostgreSQL is the source of record for Plane workflows; agentgateway's own store/runtime is authoritative for active gateway configuration and observed behavior.
+The Governance Plane is a management and audit system. Agent inference travels through agentgateway and directly to approved model/MCP services. The Plane stores tenant-scoped intent, validates and approves changes, then publishes supported gateway configuration through a protected config-resource API on a UI-enabled listener. Keep agentgateway's unauthenticated admin API loopback-only. PostgreSQL is the source of record for Plane workflows; agentgateway's own store/runtime is authoritative for active gateway configuration and observed behavior.
 
 ## Selected runtime architecture
 
 | Component | ACA target | Responsibility |
 |---|---|---|
-| Control API and console | Long-running ACA app with authenticated ingress; APIM may be placed first | User/API entry, tenant authorization, governance workflows, durable desired state |
+| Control API and console | Long-running ACA app; for APIM/VNet callers use external app ingress in an internal ACA environment, with APIM or app authentication in front | User/API entry, tenant authorization, governance workflows, durable desired state |
 | Reconciliation worker | Separate long-running internal ACA app, initially one replica | Claim pending outbox records, publish gateway config, read back evidence, retry safely |
-| agentgateway | Separate standalone ACA app; private management endpoint; private or APIM-mediated traffic ingress | Runtime authentication, supported gateway policies, routing, provider/MCP egress |
+| agentgateway | Separate standalone ACA app; private agent-traffic ingress and a separately protected config-resource API on a UI-enabled listener; loopback-only unauthenticated admin API | Runtime authentication, supported gateway policies, routing, provider/MCP egress |
 | PostgreSQL | Azure Database for PostgreSQL Flexible Server with private networking | Plane tenant registry, workflows, audit, route/model intent, revision/outbox state |
 | Secrets | Azure Key Vault and ACA managed identities | Keep plaintext credentials out of source, Plane DB, and image configuration; use gateway managed identity for Azure OpenAI when applicable |
 | Migrations | One-shot ACA Job or deployment pipeline step | Apply Alembic migrations before API/worker revisions receive traffic |
 | Telemetry | Azure Monitor/OpenTelemetry; optional existing Tempo/Prometheus | Keep API/worker observability separate from agentgateway request usage |
 
-Use distinct managed identities for the API, worker, and gateway. The API should have only required database/Key Vault permissions. The worker additionally needs access to the private gateway management API. The gateway identity receives only provider/secret permissions required at runtime. The worker must be single-replica until database-backed claiming/leases prevent duplicate publications.
+Use distinct managed identities for the API, worker, and gateway. The API should have only required database/Key Vault permissions. The worker additionally needs access to the protected gateway config-resource API. The gateway identity receives only provider/secret permissions required at runtime. The worker must be single-replica until database-backed claiming/leases prevent duplicate publications.
 
 ## Agent traffic entry paths
 
@@ -28,7 +28,7 @@ Use distinct managed identities for the API, worker, and gateway. The API should
 
 Path 2 is optional per environment. It must apply the same gateway identity and minimum policy baseline as Path 1. APIM can add enterprise edge controls but cannot be the only authorization layer if direct ingress is enabled. No client may reach managed model/MCP backends through an ungoverned alternate path.
 
-The Control API is not on either inference path. An API success response means desired state was accepted by the Plane. It must not be presented as runtime-active until agentgateway reports the applicable configuration/revision and the runtime path has been verified.
+The Control API is not on either inference path. An API success response means desired state was accepted by the Plane. It must not be presented as runtime-active until agentgateway reports the applicable configuration/revision and the runtime path has been verified. In ACA, app ingress set to `internal` is only reachable by apps in the same environment; VNet callers need app ingress set to `external` and an internal-only ACA environment to avoid public exposure.
 
 ## Feature implementation state
 
@@ -36,7 +36,7 @@ The Control API is not on either inference path. An API success response means d
 |---|---|---|
 | OIDC authentication and tenant memberships | OIDC/JWKS validation and SQLAlchemy tenant authorization source exist | Configure ACA ingress, production issuer(s), secrets, PostgreSQL identity/networking, and validate with live IdPs |
 | Applications, keys, and model registry | Database/API source exists; runtime key provisioning is Kubernetes ConfigMap based | Replace ConfigMap catalog with standalone gateway resource API and a safe credential lifecycle; design Key Vault references for non-Azure providers |
-| Route and guardrail publishing | Translator emits Kubernetes Gateway API/agentgateway CRDs | Add release-pinned standalone configuration mapping and management API client; validate effective configuration and runtime request behavior |
+| Route and guardrail publishing | Translator emits Kubernetes Gateway API/agentgateway CRDs | Add release-pinned standalone configuration mapping and protected config-resource API client; validate effective configuration and runtime request behavior |
 | Reconciliation and observed state | Worker retries pending DB rows through Kubernetes client/status | Add transactional outbox, concurrency lease, retry/backoff, standalone API publishing, readback, and idempotency |
 | PostgreSQL persistence, audit, approvals, policy history | SQLAlchemy models and migrations exist | Provision Flexible Server privately, execute migrations as a deployment step, configure backup/restore and connection identity |
 | MCP registration and discovery | Allowlisted HTTPS discovery and policy-intent records exist | Add ACA egress controls; keep tool policies clearly unenforced until a gateway translation is verified |

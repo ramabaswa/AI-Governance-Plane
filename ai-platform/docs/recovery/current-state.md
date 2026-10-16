@@ -36,7 +36,7 @@ enforcement, and automated drift remediation remain unavailable.
 | MCP/FinOps | Allowlisted real MCP discovery and non-enforcing policy intent; advisory budget with optional observed spend. | MCP server compatibility, tenant-scoped cost query correctness, and runtime integration. |
 | Policy/operations | Checksummed route snapshots and explicit rollback submission; read-only route drift observations. | Migration, live apply, controller conditions, rollback outcome, and Kubernetes reads. |
 | Console | Live API console exposes the implemented registry, onboarding, approvals, MCP, budgets, revisions, operations, observability, and audit surfaces. | Browser behavior, accessibility, response-shape compatibility, and end-to-end usability. |
-| Deployment | Local Compose includes PostgreSQL, Control API, console, OTel Collector, Tempo, and Prometheus; Kubernetes manifests define the Control API and scoped writer RBAC. | Compose/build, production cluster setup, RBAC and installed-CRD compatibility. Compose does not run agentgateway. |
+| Deployment | Local Compose includes PostgreSQL, Control API, console, OTel Collector, Tempo, and Prometheus; legacy Kubernetes manifests define the Control API and scoped writer RBAC; an initial ACA Bicep package deploys API and worker only. | Compose/build, production cluster setup, RBAC and installed-CRD compatibility, ACA deployment validation, private network/PostgreSQL setup, standalone gateway adapter and migration job. Compose does not run agentgateway. |
 
 The production deployment expects operators to provide the referenced
 `control-api-config` ConfigMap and `control-api-secrets` Secret and to run
