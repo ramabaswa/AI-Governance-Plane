@@ -63,9 +63,10 @@ Then run Compose from the repository root:
 docker compose --env-file ai-platform/.env -f ai-platform/deploy/local/docker-compose.yml up --build
 ```
 
-Compose starts PostgreSQL, the Control API, console, OTel Collector, Tempo,
-and Prometheus. It does not start Kubernetes or agentgateway. Route and key
-provisioning therefore require a separately configured Kubernetes cluster
+Compose starts PostgreSQL, applies Alembic migrations, then starts the Control
+API, console, OTel Collector, Tempo, and Prometheus. The API and worker wait
+for migrations to complete successfully. It does not start Kubernetes or
+agentgateway. Route and key provisioning therefore require a separately configured Kubernetes cluster
 with the expected CRDs, namespace, service account permissions, and referenced
 secrets.
 
@@ -115,3 +116,34 @@ pytest tests/
 For local setup details and feature boundaries, see
 [developer setup](docs/developer-experience/setup.md) and
 [MVP scope](docs/architecture/mvp-scope.md).
+
+## SETUP
+
+From the repository root, rebuild the images and start the services in the background:
+```
+cp ai-platform/.env.example ai-platform/.env
+```
+Before starting, edit ai-platform/.env and add these local development values. Use the same password in both settings:
+```
+POSTGRES_PASSWORD=localdevpassword
+DATABASE_URL=postgresql+psycopg://governance:localdevpassword@postgres:5432/ai_governance
+```
+Then run:
+```
+docker compose --env-file ai-platform/.env \
+  -f ai-platform/deploy/local/docker-compose.yml \
+  up --build -d
+```
+Follow the service logs:
+```
+docker compose --env-file ai-platform/.env \
+  -f ai-platform/deploy/local/docker-compose.yml \
+  logs -f
+```
+The Console is at http://localhost:3000; the API is at http://localhost:8000. Stop the services with:
+```
+docker compose --env-file ai-platform/.env \
+  -f ai-platform/deploy/local/docker-compose.yml \
+  down
+```
+This rebuilds and runs the services defined in docker-compose.yml. Keep the local .env values for development only.

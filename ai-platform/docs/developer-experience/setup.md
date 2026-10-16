@@ -31,8 +31,10 @@ The console is at `http://localhost:8000/console/`, API documentation is at
 ## Local services
 
 Compose configuration is in `deploy/local/docker-compose.yml`. It starts the
-database, Control API, console, OTel Collector, Tempo, and Prometheus, but not
-Kubernetes or agentgateway. The Compose configuration requires local-only
+database, runs `alembic upgrade head` as a one-shot migration service, and
+starts the Control API and worker only after migrations succeed. It also starts
+the console, OTel Collector, Tempo, and Prometheus, but not Kubernetes or
+agentgateway. The Compose configuration requires local-only
 `POSTGRES_PASSWORD`, `DATABASE_URL`, and `JWT_SECRET` values. Applying routes
 or application key catalogs requires access to a Kubernetes cluster with the
 configured resources and permissions.

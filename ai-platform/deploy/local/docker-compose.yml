@@ -15,6 +15,21 @@ services:
     networks:
       - governance-net
 
+  migrate:
+    build:
+      context: ../..
+      dockerfile: deploy/local/Dockerfile.api
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      ENVIRONMENT: development
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL for PostgreSQL}
+      OIDC_LEGACY_MEMBERSHIP_ISSUER: urn:ai-governance-plane:development
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - governance-net
+
   control-api:
     build:
       context: ../..
@@ -33,8 +48,8 @@ services:
       TEMPO_QUERY_URL: http://tempo:3200
       PROMETHEUS_QUERY_URL: http://prometheus:9090
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       otel-collector:
         condition: service_started
       tempo:
@@ -56,8 +71,8 @@ services:
       AGENTGATEWAY_GATEWAY_NAME: ai-gateway
       RECONCILE_INTERVAL: "15"
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     networks:
       - governance-net
 
