@@ -1,8 +1,8 @@
 # AI Governance Plane
 
 Tenant-scoped control plane and console for governing applications, models,
-gateway routes, audit evidence, and observability with agentgateway as the
-intended data plane.
+gateway routes, audit evidence, and observability. The target deployment is
+Azure Container Apps, with standalone agentgateway as the runtime data plane.
 
 The implementation and setup guide are in
 [`ai-platform/README.md`](ai-platform/README.md). The current implementation
@@ -13,8 +13,9 @@ slice and explicit verification limitations are documented there.
 The Governance Plane is a management and evidence plane, not an inference
 proxy. Use it to register applications and models, submit gateway
 configuration, track approvals, and inspect governance evidence. Application
-inference traffic is intended to flow through agentgateway, not through this
-Control API.
+inference traffic flows through agentgateway, not through this Control API.
+The current gateway writer is still Kubernetes-specific, so the ACA-only
+target is not fully implemented.
 
 ### What is a tenant?
 
@@ -25,7 +26,7 @@ context of an authenticated user's active membership. A user's membership
 determines their tenant roles and permissions; a platform administrator can
 have platform-wide administrative access. A tenant is an authorization and
 data-scoping concept in this product, not necessarily a separate database,
-Kubernetes cluster, or billing account.
+ACA environment, or billing account.
 
 If you work with more than one tenant, choose an active membership when
 prompted or as directed by your administrator. Do not use a tenant identifier
@@ -35,22 +36,23 @@ to be isolated by the API according to that resolved tenant context.
 ### What features are available?
 
 The **Background integration** column identifies what the feature contacts or
-updates. Agentgateway-managed resources are written/read through the
-Kubernetes API; the Governance Plane does not make inference requests on your
-behalf. Routes and credentials are intended to affect gateway behavior only
-after the controller observes and reconciles them.
+updates. The ACA target needs a protected, supported standalone config-resource
+API path; the unauthenticated agentgateway admin API must remain on loopback.
+The current source still uses Kubernetes resources for gateway writes, so
+those operations are not ready for an ACA-only runtime. The Governance Plane
+does not make inference requests on your behalf.
 
 | Feature | What it is for | Background integration |
 | --- | --- | --- |
-| Applications and agents | Register tenant-owned applications, manage lifecycle, and inspect or revoke application credentials. Credentials are disclosed only at eligible creation/activation. | **Agentgateway via Kubernetes:** eligible credential creation, activation, and revocation update the gateway key-catalog resource. Production creation remains a draft until separately approved and activated. |
-| Model catalog | Register provider/model metadata and a Kubernetes Secret reference without sending provider secret plaintext to the API. | **No direct agentgateway call:** metadata/reference is stored by the Governance Plane. Routes can later refer to registered models; inference goes through the gateway. |
-| Gateway routes and guardrails | Validate and submit route/backend configuration and supported regex policies for agentgateway resources. A successful write is not proof of live traffic. | **Agentgateway via Kubernetes:** route and supported policy resources are submitted to the Kubernetes API; controller status is read separately. |
+| Applications and agents | Register tenant-owned applications, manage lifecycle, and inspect or revoke application credentials. Credentials are disclosed only at eligible creation/activation. | **Current code: Kubernetes ConfigMap. ACA target: standalone AgentGateway resource API (not implemented yet).** |
+| Model catalog | Register provider/model metadata and a secret reference without sending provider secret plaintext to the API. | **Governance Plane database:** metadata is stored internally; ACA runtime secret resolution and model publication need implementation. |
+| Gateway routes and guardrails | Validate and submit route/backend configuration and supported policy intent. A successful write is not proof of live traffic. | **Current code: Kubernetes resources. ACA target: standalone AgentGateway management API (not implemented yet).** |
 | Approvals | Request and record reviewer decisions with separation of duties; production application activation uses a matching approval. | **Governance Plane database:** decisions are stored internally. A matching approval is consumed by production activation; approval itself does not call the gateway. |
-| Self-service onboarding | Let an eligible tenant member request an application, have a distinct reviewer decide, then complete approved onboarding. | **Governance Plane database; optionally agentgateway via Kubernetes on completion:** request/review are internal. Eligible non-production completion provisions a credential catalog; production completion creates a draft. |
+| Self-service onboarding | Let an eligible tenant member request an application, have a distinct reviewer decide, then complete approved onboarding. | **Governance Plane database; current runtime provisioning uses Kubernetes.** ACA standalone credential publication is not implemented. |
 | MCP governance | Register allowlisted HTTPS MCP servers, discover tools, and record policy intent. Tool policies are not enforced by agentgateway. | **MCP server directly for discovery:** initialization and tool listing call the allowlisted server. Registry/policy intent is stored internally, not sent to agentgateway. |
 | FinOps and budgets | Configure advisory budget thresholds and view estimated spend only when tenant-scoped Prometheus data is configured. Hard caps are not enforced. | **Governance Plane database and optionally Prometheus:** budget settings are stored internally; configured Prometheus data may be queried for estimates. |
-| Policy lifecycle | Review route policy revisions and submit a rollback to a prior revision; verify the resulting resource status separately. | **Governance Plane database and agentgateway via Kubernetes:** revisions are recorded internally; rollback reapplies desired gateway resources and status is observed separately. |
-| Operations | Inspect route/resource status and drift observations. This is read-only and does not automatically remediate drift. | **Agentgateway via Kubernetes, read-only:** reads desired resources/status; it does not reconcile or mutate them. |
+| Policy lifecycle | Review route policy revisions and submit a rollback to a prior revision; verify resulting runtime state separately. | **Governance Plane database and current Kubernetes integration.** Standalone ACA publish/readback is not implemented. |
+| Operations | Inspect route/resource status and drift observations. This is read-only and does not automatically remediate drift. | **Current implementation reads Kubernetes status.** ACA runtime observation is not implemented. |
 | Audit and observability | Inspect tenant-scoped audit events and query configured traces and metrics. Audit-chain storage is not immutable compliance evidence. | **Governance Plane database, and optionally Tempo/Prometheus:** audit events are stored internally; configured observability services supply traces/metrics. |
 | Identity and access | Authenticate users and resolve tenant roles and permissions from active memberships. Tenant membership administration is restricted to platform administrators. | **OIDC identity provider for user authentication; Governance Plane database for tenant memberships/roles.** The API validates identity with the configured provider, then resolves authorization locally. It does not currently delegate tenant-role management to an external identity-management API. |
 
@@ -96,11 +98,12 @@ the current behavior and limitations.
   `application_activation` approval, have a different authorized reviewer
   approve it, then activate with that approval. The resulting credential is
   also returned only once.
-- Register provider/model metadata with a Kubernetes Secret reference. Do not
+- Register provider/model metadata with a secret reference. Do not
   submit provider secret plaintext to the Control API.
 - Validate a route before applying it. Check the returned apply result and
-  then inspect controller/resource status; an accepted Kubernetes write does
-  not prove that the gateway is serving traffic.
+  then inspect runtime status; a control-plane write response does not prove
+  that the gateway is serving traffic. Current status inspection still
+  requires Kubernetes.
 
 **Tenant administrators and platform operators**
 
@@ -113,8 +116,9 @@ the current behavior and limitations.
 - Set monthly budgets as advisory thresholds, inspect route policy revision
   history, and request a rollback when appropriate. A rollback submits desired
   state; verify the observed resource status afterward.
-- Configure Kubernetes access and agentgateway resources separately. Local
-  Compose does not run Kubernetes or agentgateway.
+- The target deployment is Azure Container Apps. Current local Compose and
+  Kubernetes assets are development/legacy paths; neither provides the target
+  standalone AgentGateway integration.
 
 **Finance and FinOps stakeholders**
 
@@ -158,5 +162,5 @@ import it into an OpenAPI-compatible client. The interactive Swagger UI is at
 A separate checked-in OpenAPI file is not maintained: the generated
 specification is the source of truth and stays aligned with the running API.
 The schema describes the API contract; it does not imply that external
-dependencies such as Kubernetes, Prometheus, or agentgateway are configured
+dependencies such as PostgreSQL, telemetry, or agentgateway are configured
 or available.

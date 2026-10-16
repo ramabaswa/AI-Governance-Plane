@@ -1,122 +1,63 @@
-# Governance Workflow Implementation Scope
+# Governance Plane MVP Scope
 
-**Status:** A–F plus approval/onboarding/MCP/FinOps/policy-history/operations source is present; automated test suite passes, while live integration behavior remains unverified.
-**Reference baseline:** agentgateway OSS `v1.6.0`, commit `ea5608642b9d5c94c5baf5fd9f2f9849b808e963` (Apache-2.0).  
-**Verification status:** Full Python suite: **103 passed, 2 skipped**. The PostgreSQL migration, live Kubernetes/CRD behavior, gateway inference, APIM, and gateway telemetry have not been verified.
+**Deployment decision:** Azure Container Apps for the Governance Plane and standalone agentgateway; no AKS/Kubernetes dependency in the target architecture.
+**Current implementation status:** The business API and persistence source exist, but gateway resource provisioning is still Kubernetes-specific. This repository is not yet a complete ACA deployment or a working ACA-to-agentgateway control plane.
 
 ## Product boundary
 
-The platform is the management/control plane for users, tenant authorization,
-application/model registries, approval and onboarding workflows, desired
-configuration, audit, and telemetry presentation. agentgateway remains the
-runtime data plane. This implementation does not proxy inference.
+The Governance Plane is a management and audit system. Agent inference travels through agentgateway and directly to approved model/MCP services. The Plane stores tenant-scoped intent, validates and approves changes, then publishes supported gateway configuration through a private management interface. PostgreSQL is the source of record for Plane workflows; agentgateway's own store/runtime is authoritative for active gateway configuration and observed behavior.
 
-The Control API does not proxy inference requests. It may manage resources through the Kubernetes API and query selected management/telemetry systems; neither operation belongs in the inference path.
+## Selected runtime architecture
 
-## Pinned upstream and compatibility gates
-
-The latest release tag returned by the agentgateway repository on 2026-10-15 was `v1.6.0`. At that tag, source and tests confirm:
-
-- Standalone model/provider configuration (`examples/llm-basic/config.yaml`).
-- MCP JWT and CEL authorization (`examples/mcp-authorization/config.yaml`, `crates/agentgateway/src/mcp/rbac.rs`).
-- Regex prompt-guard configuration (`examples/llm-prompt-guard/config.yaml`).
-- Kubernetes backend/policy API types and schema tests.
-- OTLP trace export configuration (`examples/llm-telemetry/tracing/otel.yaml`).
-
-The pin is a translation target, not proof that the current platform resources are compatible. The following must be demonstrated before gateway integration is treated as delivered:
-
-1. Build/install the actual OSS release and apply the platform-generated resources in an isolated Kubernetes environment.
-2. Execute an LLM request through the real gateway to a deterministic test backend, with the platform API absent from that request path.
-3. Confirm JWT/API-key authorization, request routing and configured OSS regex policy at that gateway version.
-4. Confirm what usage/token attributes are emitted for the chosen provider/backend, then connect a telemetry store and prove queryability.
-
-If any required capability fails a compatibility gate, stop and bring the exact gap back for scope approval. Do not silently switch to Enterprise CRDs, mocks, or a different release.
-MCP discovery and policy management are implemented as control-plane source;
-runtime MCP policy publication/enforcement remains a compatibility and
-integration gap.
-
-### Enterprise features explicitly excluded
-
-The official Enterprise comparison and lab manifests identify `EnterpriseAgentgatewayBudget`/`entBudgetEnforcement` as Enterprise capabilities. The Enterprise `entPromptGuard` variant adds Purview DLP. The OSS MVP therefore makes **no hard-budget, cost-enforcement, Purview, or Enterprise management-UI claim**. The virtual-key lab's spend test uses a deterministic mock LLM and artificial prices; that is not evidence of provider spend or OSS budget support.
-
-## Implemented source scope
-
-The code contains the following initial control-plane slice. “Implemented” here
-means source code and tests are present; it does not mean the service, schema,
-gateway, or telemetry has been executed or integrated successfully.
-
-| Outcome / stable feature IDs | Current implementation | Verification boundary |
+| Component | ACA target | Responsibility |
 |---|---|---|
-| **A. Authentication and tenant access — F-001** | OIDC JWT verification for configured issuer/audience/JWKS; authorization derives tenant roles from memberships keyed by issuer, subject, and tenant, not caller role claims. Local token login is development-only. | Automated tests pass; production provider interoperability is unverified. Issuer migration requires an explicitly configured legacy issuer and has not run against PostgreSQL. |
-| **B. Application registry and credentials — F-002** | SQLAlchemy persistence; eligible applications receive a one-time key stored as a SHA-256 hash and provisioned as a keyHash-only ConfigMap entry. Production activation now requires a separate approved `application_activation` request and provisions its credential only at activation. | Kubernetes ConfigMap write/read semantics and gateway acceptance/removal are unverified. |
-| **C. Model/backend registry — F-004** | Persistent model metadata and provider Secret references; credentials are not stored as plaintext model fields. A tenant-authorized capabilities endpoint reports the pinned translator's supported providers; the Console excludes unsupported providers from route selection. | Provider secret resolution and a real backend call are not implemented/verified in this slice; non-Console clients still rely on route validation to reject unsupported providers. |
-| **D. Routes and supported guardrails — F-005, F-006** | Translator emits validated-subset Kubernetes Gateway API/agentgateway resources; server-side apply and controller status read-back are used. Unsupported route capabilities are rejected before persistence. | Generated CRDs and status conditions have not been validated against a live v1.6.0 installation; observed resource acceptance is not runtime request verification. |
-| **E. Audit and observability — F-010, F-012** | Persistent audit hash-chain service; OTel control-API request instrumentation; Tempo trace and Prometheus metric readers expose explicit unavailable states. | Automated tests pass; no gateway request/token metrics are fabricated. Live telemetry export/query and external audit anchoring remain unverified/not implemented. |
-| **F. Onboarding and approvals — F-003, F-008** | Durable onboarding requests with reviewer approval and requester-only completion; durable approval requests with self-approval rejection and one-time application of approved production activation. | No quorum, timeout/escalation engine, or generic mutation executor is implemented. |
-| **G. MCP governance — F-007** | Tenant-scoped server registry, allowlisted HTTPS `initialize`/`tools/list` discovery, CEL-validated per-tool policy records. | Policies are stored and audited but are not published to or enforced by agentgateway. |
-| **H. FinOps — F-011** | Tenant budget configuration and optional tenant-scoped Prometheus estimated-cost observation. | No inference hard cap or cost enforcement; observed costs remain unavailable without a correctly scoped monthly query. |
-| **I. Policy lifecycle and operations — F-009, F-013** | Checksummed route revision snapshots, explicit rollback through the Kubernetes apply path, read-only tenant drift/status observations, and a database-backed worker retrying stale pending route applies. | Worker has no durable per-attempt record, multi-worker claim/lease, or exponential backoff; no deletion cleanup or drift remediation. Controller semantics and live rollback remain unverified. |
+| Control API and console | Long-running ACA app with authenticated ingress; APIM may be placed first | User/API entry, tenant authorization, governance workflows, durable desired state |
+| Reconciliation worker | Separate long-running internal ACA app, initially one replica | Claim pending outbox records, publish gateway config, read back evidence, retry safely |
+| agentgateway | Separate standalone ACA app; private management endpoint; private or APIM-mediated traffic ingress | Runtime authentication, supported gateway policies, routing, provider/MCP egress |
+| PostgreSQL | Azure Database for PostgreSQL Flexible Server with private networking | Plane tenant registry, workflows, audit, route/model intent, revision/outbox state |
+| Secrets | Azure Key Vault and ACA managed identities | Keep plaintext credentials out of source, Plane DB, and image configuration; use gateway managed identity for Azure OpenAI when applicable |
+| Migrations | One-shot ACA Job or deployment pipeline step | Apply Alembic migrations before API/worker revisions receive traffic |
+| Telemetry | Azure Monitor/OpenTelemetry; optional existing Tempo/Prometheus | Keep API/worker observability separate from agentgateway request usage |
 
-The source does **not** establish end-to-end inference through a live gateway.
-Local Compose does not include an agentgateway runtime.
+Use distinct managed identities for the API, worker, and gateway. The API should have only required database/Key Vault permissions. The worker additionally needs access to the private gateway management API. The gateway identity receives only provider/secret permissions required at runtime. The worker must be single-replica until database-backed claiming/leases prevent duplicate publications.
 
-## Explicit feature boundaries
+## Agent traffic entry paths
 
-- **Approvals:** persisted request/decision workflow with requester/decider separation; only approved production application activation consumes an approval. Generic approvals do not automatically execute arbitrary policy changes, and no quorum or escalation behavior is claimed.
-- **MCP:** discovery is a real outbound HTTPS MCP JSON-RPC operation restricted to exact hosts in `MCP_ALLOWED_HOSTS`. Tool policies are management records only until a verified gateway translation/enforcement path is added. Configure network egress restrictions in addition to the application allowlist.
-- **FinOps:** budgets are advisory; no `429`, provider spend cap, or gateway token limit is enforced. Cost is an observed Prometheus value only when a tenant-scoped monthly query is configured. Empty/missing telemetry is not converted to zero.
-- **Policy lifecycle:** route snapshots are checksummed, history is tenant-scoped, and rollback creates a new desired revision through the same Kubernetes apply path. This does not guarantee runtime rollback or a successful inference path.
-- **Operations:** the drift endpoint reads controller/resource status and never mutates desired state. A separate worker retries persisted stale `pending` applies and records observed status; it is not a general desired-state reconciler and has no durable attempt ledger, concurrency claim, exponential backoff, delete cleanup, or drift remediation.
-- **Environment configuration:** OIDC providers and selected endpoints/targets are supplied through environment/bootstrap configuration. A durable, typed environment/integration registry has not been implemented; the provider-neutral target record is specified in the [canonical architecture](../../../docs/architect.md).
-- No firewall, WAF, NHI platform, autonomous remediation, or additional chained inference proxies.
+1. `Agent → APIM → private agentgateway ingress → approved model/MCP backend`.
+2. `Approved private agent → private agentgateway ingress → the same backend set`.
 
-## Ownership and source of record
+Path 2 is optional per environment. It must apply the same gateway identity and minimum policy baseline as Path 1. APIM can add enterprise edge controls but cannot be the only authorization layer if direct ingress is enabled. No client may reach managed model/MCP backends through an ungoverned alternate path.
 
-| Domain | Owner / source of record | Responsibility and boundary |
+The Control API is not on either inference path. An API success response means desired state was accepted by the Plane. It must not be presented as runtime-active until agentgateway reports the applicable configuration/revision and the runtime path has been verified.
+
+## Feature implementation state
+
+| Capability | Source state | ACA work required |
 |---|---|---|
-| **Desired gateway configuration** | Kubernetes `Gateway`, `HTTPRoute`, `AgentgatewayBackend` and `AgentgatewayPolicy` resources authored by the Control API and its same-workflow recovery worker. | These resources are the sole active desired-state record for the gateway. The worker retries the same database-backed route revision using the shared translator; it is not an independent configuration owner. |
-| **Configuration reconciliation** | agentgateway Kubernetes controller. | It reconciles those resources and reports their status. The platform reads that status; it does not also push standalone YAML to an admin endpoint. |
-| **Observed runtime configuration** | agentgateway controller/resource status, read from the Kubernetes API. | “Observed active” requires current-generation status conditions and matching managed revision labels, not merely a successful write request. Runtime request outcomes remain agentgateway evidence. |
-| **Identity** | Generic OIDC for user authentication; PostgreSQL tenant membership/role mapping for management authorization; agentgateway validates configured workload API-key credentials for runtime access. | A client-supplied tenant header or token role claim is not authority. OIDC provider-specific behavior remains unverified. |
-| **Secrets** | Kubernetes Secret store for MVP provider credentials; secret manager remains the owner of plaintext. | Platform records Secret references only. Credentials do not enter generated manifests, API responses, logs, traces, or audit details. External Vault/Purview integration is not in the OSS MVP. |
-| **Applications and models** | PostgreSQL for registry metadata; Kubernetes resources for active gateway configuration. | ORM/API behavior is covered by the automated suite; production PostgreSQL schema migration and durability have not been verified. |
-| **MCP servers/tools** | PostgreSQL registry and allowlisted discovery; per-tool CEL policy records. | No policy is published to the gateway; registry state does not authorize an MCP invocation. |
-| **Audit** | SQLAlchemy-backed audit event table with a hash chain. | Automated tests pass; production durability and external immutable anchoring are unverified/not implemented. This is not a compliance certification. |
-| **Usage and traces** | OTel Collector/Tempo and Prometheus are configured as readers/export targets; the platform is a tenant-authorized reader/presenter. | Control API metrics are distinct from inference usage. Gateway token/cost fields are unavailable until actual telemetry is integrated. |
-| **Approvals** | PostgreSQL approval-request ledger and audited decisions. | Only production application activation is wired to consume an approved request; other approval types are records only. |
-| **Budgets** | PostgreSQL budget policy and configured tenant-scoped Prometheus query. | No hard-cap enforcement; spend is unknown if source/query is absent. |
-| **Policy history** | PostgreSQL route snapshots with SHA-256 checksums. | Database-backed history is not immutable; rollback requires a valid Kubernetes write and controller observation. |
+| OIDC authentication and tenant memberships | OIDC/JWKS validation and SQLAlchemy tenant authorization source exist | Configure ACA ingress, production issuer(s), secrets, PostgreSQL identity/networking, and validate with live IdPs |
+| Applications, keys, and model registry | Database/API source exists; runtime key provisioning is Kubernetes ConfigMap based | Replace ConfigMap catalog with standalone gateway resource API and a safe credential lifecycle; design Key Vault references for non-Azure providers |
+| Route and guardrail publishing | Translator emits Kubernetes Gateway API/agentgateway CRDs | Add release-pinned standalone configuration mapping and management API client; validate effective configuration and runtime request behavior |
+| Reconciliation and observed state | Worker retries pending DB rows through Kubernetes client/status | Add transactional outbox, concurrency lease, retry/backoff, standalone API publishing, readback, and idempotency |
+| PostgreSQL persistence, audit, approvals, policy history | SQLAlchemy models and migrations exist | Provision Flexible Server privately, execute migrations as a deployment step, configure backup/restore and connection identity |
+| MCP registration and discovery | Allowlisted HTTPS discovery and policy-intent records exist | Add ACA egress controls; keep tool policies clearly unenforced until a gateway translation is verified |
+| CMDB/ITSM/OpenFGA/OPA/APIM | Target design only or partial records | Implement and test typed adapters, source-of-record rules, identity contracts, and fail modes |
+| Telemetry and FinOps | API query/presentation source exists; gateway usage data is not established | Export gateway/ACA telemetry, configure tenant attribution and verify actual usage before showing cost |
 
-## Single configuration write path
+## Required cutover work
 
-**Selected path: Kubernetes CRD/controller-managed configuration.**
+1. Extend the initial ACA Bicep package (`deploy/azure/container-apps`) beyond API/worker apps to cover private networking, ACA environment, PostgreSQL, AgentGateway, and a one-shot migration job. The checked-in package assumes an existing ACA environment, PostgreSQL database, Key Vault, and images.
+2. Define a standalone AgentGateway image/config baseline and private ACA ingress. Pin the image version. Protect management routes from agent traffic and unrelated apps.
+3. Implement a separate standalone adapter. It must publish only resource kinds supported by the pinned agentgateway release; it must never write agentgateway's private database tables.
+4. Replace Kubernetes key ConfigMaps and generated CRDs with supported standalone resource writes. Preserve tenant scoping, key hashing in the Plane, one-time disclosure, revoke semantics, and audit behavior.
+5. Make reconciliation durable and idempotent: record intent/outbox atomically, claim with a lease, publish, read back, record outcome, retry with bounded backoff, and expose pending/failed/observed/runtime-verified as distinct states.
+6. Implement Key Vault and managed-identity credential paths. Do not put provider plaintext into Plane records, logs, audit, generated image files, or deployment parameters.
+7. Configure ingress: APIM → gateway plus optional direct-private gateway ingress. Enforce network egress so gateway-to-backend is the only inference path.
+8. Run migrations and verify ACA health, OIDC, API and worker connectivity, gateway config readback, a real deterministic backend request, credential rejection/revocation, and telemetry attribution.
 
-```text
-Console → versioned Control API → validate/authenticate → Kubernetes API writes CRDs
-                                                    ↓
-                                      agentgateway controller
-                                                    ↓
-                                         gateway runtime
-                                                    ↓
-                           controller status read back by platform
-```
+## Claims and exclusions
 
-- The Control API and its recovery worker are components of one platform writer workflow for platform-managed gateway objects.
-- The agentgateway controller is the only runtime reconciler for those resources.
-- GitOps is not an additional writer for the same managed objects in this MVP.
-- The platform does not call an assumed `/config/apply` endpoint and does not run a second standalone-YAML reconciliation path.
-- A rejected or partial Kubernetes/controller reconcile is reported as failed/pending, never success-shaped completion.
-
-The implementation uses the Kubernetes API path. It does not use the prior direct `/config/apply` admin endpoint. Live controller reconciliation remains unverified.
-
-## Release-readiness blockers before integration claims
-
-1. Provision production OIDC, PostgreSQL, and telemetry endpoints and migrate the database.
-2. Verify OSS v1.6.0 Kubernetes installation/API permissions and generated resource compatibility.
-3. Confirm runtime key catalog behavior and gateway credential identity binding.
-4. Add a deterministic end-to-end gateway/backend environment before claiming inference routing or enforcement.
-5. Verify MCP host allowlisting and egress protections; verify that the gateway enforcement path is implemented before claiming tool-policy enforcement.
-6. Deploy both ingress paths only after proving that APIM and approved direct workloads enforce the same minimum gateway identity/policy baseline; neither path is currently deployed by this repository.
-7. Implement typed CMDB/ITSM/policy-engine adapters and source-of-record conflict/failure rules before presenting those systems as connected.
-
-These remain integration blockers, not test passes. Do not pre-label them complete.
+- A deployed ACA API is not proof that the app can manage standalone agentgateway. The current writer is still Kubernetes-specific.
+- Do not claim runtime enforcement, active routes, key revocation propagation, or request-level audit until verified against the pinned standalone release.
+- MCP per-tool policy publication, hard spend caps, autonomous drift repair, CMDB/ITSM synchronization, and generic OpenFGA/OPA/Azure Policy translation are not part of the current validated slice.
+- APIM and direct private ingress are target paths, not currently deployed configurations.
+- PostgreSQL schema migration, ACA infrastructure, Key Vault integration, live gateway configuration, inference, and telemetry have not been validated in this workspace.
