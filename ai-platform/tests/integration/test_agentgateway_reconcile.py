@@ -14,11 +14,13 @@ class FakeCustomObjectsApi:
         self.resources = {}
         self.accepted = accepted
         self.fail_after = fail_after
+        self.observed_generation = 1
 
     def patch_namespaced_custom_object(self, **kwargs):
         if self.fail_after is not None and len(self.resources) == self.fail_after:
             raise ApiException(status=409, reason="field manager conflict")
         body = kwargs["body"]
+        body.setdefault("metadata", {})["generation"] = 1
         key = (body["kind"], body["metadata"]["namespace"], body["metadata"]["name"])
         self.resources[key] = body
         return body
@@ -36,12 +38,23 @@ class FakeCustomObjectsApi:
                 "type": "Accepted",
                 "status": "False",
                 "reason": "Invalid",
+                "observedGeneration": self.observed_generation,
             }]}
         elif kind == "HTTPRoute":
             resource["status"] = {"parents": [{
                 "conditions": [
-                    {"type": "Accepted", "status": "True", "reason": "Accepted"},
-                    {"type": "ResolvedRefs", "status": "True", "reason": "ResolvedRefs"},
+                    {
+                        "type": "Accepted",
+                        "status": "True",
+                        "reason": "Accepted",
+                        "observedGeneration": self.observed_generation,
+                    },
+                    {
+                        "type": "ResolvedRefs",
+                        "status": "True",
+                        "reason": "ResolvedRefs",
+                        "observedGeneration": self.observed_generation,
+                    },
                 ],
             }]}
         else:
@@ -49,6 +62,7 @@ class FakeCustomObjectsApi:
                 "type": "Accepted",
                 "status": "True",
                 "reason": "Accepted",
+                "observedGeneration": self.observed_generation,
             }]}
         return resource
 
@@ -142,6 +156,19 @@ def test_reconciler_keeps_stale_route_revision_pending():
         for item in status["resources"]
         if item["kind"] in {"HTTPRoute", "AgentgatewayPolicy"}
     )
+
+
+def test_reconciler_does_not_accept_conditions_from_an_older_generation():
+    api = FakeCustomObjectsApi(accepted=True)
+    reconciler = AgentgatewayReconciler(AgentgatewayKubernetesClient(api, FakeCoreApi()))
+    models = {"model-test": _model()}
+
+    reconciler.apply([_route()], models)
+    api.observed_generation = 0
+
+    status = reconciler.read_status(_route(), models)
+    assert status["state"] == "pending"
+    assert status["observed_active"] is False
 
 
 def test_reconciler_surfaces_partial_apply_conflicts():

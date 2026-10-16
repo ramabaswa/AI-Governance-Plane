@@ -27,6 +27,7 @@ _PROVIDER_FIELDS = {
     "gemini": "gemini",
     "openai": "openai",
 }
+SUPPORTED_PROVIDER_TYPES = tuple(_PROVIDER_FIELDS)
 _PROMPT_GUARD_ACTIONS = {
     "Mask": "Mask",
     "Block": "Reject",

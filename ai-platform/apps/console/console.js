@@ -4,6 +4,7 @@ let tenantId = '';
 let latestCredential = '';
 let currentSubject = '';
 let currentRoles = [];
+let platformCapabilities = null;
 
 document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('.nav-link').forEach(button => {
@@ -85,6 +86,12 @@ async function refreshAll() {
     showNotice('Authenticate with the configured OIDC provider before loading tenant data.');
     return;
   }
+  try {
+    await loadPlatformCapabilities();
+  } catch (error) {
+    platformCapabilities = null;
+    showNotice(`Platform capabilities could not be loaded: ${error.message}`);
+  }
   const loaders = [
     loadApplications,
     loadModels,
@@ -118,17 +125,89 @@ async function loadApplications() {
 
 async function loadModels() {
   const models = await apiRequest('/models');
+  const supportedProviders = new Set(
+    platformCapabilities?.gateway?.supported_providers || [],
+  );
   renderRows('models-table', models, model => [
     model.name, model.provider, model.model_name, model.secret_ref,
     model.is_active ? 'approved' : 'inactive',
+    supportedProviders.has(model.provider) ? 'Supported by translator' : 'Catalog only; not routeable',
   ]);
   const selector = document.getElementById('route-model');
-  selector.replaceChildren(...models.filter(model => model.is_active).map(model => {
+  const routeModels = models.filter(model =>
+    model.is_active && supportedProviders.has(model.provider),
+  );
+  selector.replaceChildren(...routeModels.map(model => {
     const option = document.createElement('option');
     option.value = model.id;
     option.textContent = `${model.name} (${model.provider})`;
     return option;
   }));
+  if (!routeModels.length) {
+    selector.disabled = true;
+    document.getElementById('route-form').querySelector('[type="submit"]').disabled = true;
+  } else {
+    selector.disabled = false;
+    document.getElementById('route-form').querySelector('[type="submit"]').disabled = false;
+  }
+  const providerSelect = document.getElementById('model-provider');
+  [...providerSelect.options].forEach(option => {
+    if (option.value) option.disabled = !supportedProviders.has(option.value);
+  });
+  document.getElementById('model-capability-note').textContent =
+    `Route-supported by agentgateway ${platformCapabilities?.gateway?.release || 'unavailable'}: ${
+      [...supportedProviders].join(', ') || 'unavailable'
+    }. Other registered providers cannot be routed by this translator.`;
+}
+
+async function loadPlatformCapabilities() {
+  const capabilities = await apiRequest('/platform/capabilities');
+  platformCapabilities = capabilities;
+  const gateway = capabilities.gateway;
+  document.getElementById('control-plane-boundary').textContent =
+    `The Control API is a management plane, not an inference proxy. It submits supported Kubernetes resources for agentgateway ${gateway.release}; live runtime behavior is ${
+      gateway.runtime_verified ? 'verified' : 'not verified'
+    }.`;
+
+  const ingress = document.getElementById('ingress-capabilities');
+  ingress.replaceChildren();
+  [
+    ['APIM → agentgateway', capabilities.ingress.apim.status],
+    ['Approved private workload → agentgateway', capabilities.ingress.direct_private.status],
+  ].forEach(([label, status]) => {
+    const card = document.createElement('div');
+    card.className = 'capability-card';
+    const title = document.createElement('strong');
+    title.textContent = label;
+    const state = document.createElement('span');
+    state.className = 'capability-state';
+    state.textContent = capabilityStatusLabel(status);
+    const explanation = document.createElement('p');
+    explanation.className = 'text-muted';
+    explanation.textContent =
+      'Target only; both paths must converge on the same agentgateway security baseline.';
+    card.append(title, state, explanation);
+    ingress.append(card);
+  });
+
+  const integrations = document.getElementById('integration-capabilities');
+  integrations.replaceChildren();
+  Object.entries(capabilities.integrations).forEach(([name, details]) => {
+    const item = document.createElement('li');
+    const label = document.createElement('strong');
+    label.textContent = `${name.replaceAll('_', ' ')}: `;
+    item.append(label, document.createTextNode(capabilityStatusLabel(details.status)));
+    integrations.append(item);
+  });
+}
+
+function capabilityStatusLabel(status) {
+  return ({
+    target_only: 'Target only',
+    configured_but_unverified: 'Configured, not verified',
+    not_published_to_gateway: 'Not published to gateway',
+    implemented: 'Implemented',
+  })[status] || status;
 }
 
 async function loadRoutes() {
@@ -225,12 +304,17 @@ async function registerApplication(event) {
 
 async function registerModel(event) {
   event.preventDefault();
+  const provider = document.getElementById('model-provider').value;
+  if (!platformCapabilities?.gateway?.supported_providers?.includes(provider)) {
+    showNotice('The selected provider is not supported by the current agentgateway translator.');
+    return;
+  }
   try {
     await apiRequest('/models', {
       method: 'POST',
       body: JSON.stringify({
         name: document.getElementById('model-name').value,
-        provider: document.getElementById('model-provider').value,
+        provider,
         model_name: document.getElementById('provider-model').value,
         secret_ref: document.getElementById('provider-secret-ref').value,
       }),

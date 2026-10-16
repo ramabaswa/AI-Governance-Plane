@@ -28,6 +28,14 @@ def _condition_records(resource: dict[str, Any], kind: str) -> list[dict[str, An
     ]
 
 
+def _condition_matches_generation(condition: dict[str, Any], generation: Any) -> bool:
+    return (
+        isinstance(generation, int)
+        and not isinstance(generation, bool)
+        and condition.get("observedGeneration") == generation
+    )
+
+
 class AgentgatewayReconciler:
     """No direct gateway admin API is used; Kubernetes controllers own runtime state."""
 
@@ -71,8 +79,20 @@ class AgentgatewayReconciler:
                 continue
 
             conditions = _condition_records(observed, desired["kind"])
-            accepted = [condition for condition in conditions if condition.get("type") == "Accepted"]
-            resolved = [condition for condition in conditions if condition.get("type") == "ResolvedRefs"]
+            observed_generation = observed.get("metadata", {}).get("generation")
+            current_conditions = [
+                condition
+                for condition in conditions
+                if _condition_matches_generation(condition, observed_generation)
+            ]
+            accepted = [
+                condition for condition in current_conditions
+                if condition.get("type") == "Accepted"
+            ]
+            resolved = [
+                condition for condition in current_conditions
+                if condition.get("type") == "ResolvedRefs"
+            ]
             labels = desired["metadata"].get("labels", {})
             observed_labels = observed.get("metadata", {}).get("labels", {})
             revision_matches = (
@@ -83,7 +103,7 @@ class AgentgatewayReconciler:
             rejected = any(
                 condition.get("type") in {"Accepted", "ResolvedRefs"}
                 and condition.get("status") == "False"
-                for condition in conditions
+                for condition in current_conditions
             )
             ready = (
                 revision_matches

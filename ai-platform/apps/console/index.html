@@ -73,6 +73,13 @@
             <div class="kpi-card"><span class="kpi-label">Gateway token metrics</span><span id="overview-tokens" class="kpi-value">Unavailable</span></div>
           </div>
           <p class="text-muted">Gateway request and token metrics remain unavailable unless the gateway exports tenant-scoped metrics to Prometheus.</p>
+          <section class="card" aria-labelledby="architecture-boundary-heading">
+            <h2 id="architecture-boundary-heading">Architecture boundary</h2>
+            <p id="control-plane-boundary" class="text-muted">Load platform capabilities after signing in.</p>
+            <div id="ingress-capabilities" class="capability-grid"></div>
+            <h3>Integration status</h3>
+            <ul id="integration-capabilities" class="capability-list"></ul>
+          </section>
         </section>
 
         <section id="section-applications" class="tab-pane">
@@ -107,6 +114,7 @@
               <option value="bedrock">Bedrock</option><option value="gemini">Gemini</option>
               <option value="vllm">vLLM</option>
             </select>
+            <p id="model-capability-note" class="text-muted">Gateway-supported providers are determined by the active platform capability response.</p>
             <label for="provider-model">Provider model identifier</label>
             <input id="provider-model" class="form-input" required>
             <label for="provider-secret-ref">Kubernetes Secret reference (secret-name/key)</label>
@@ -114,7 +122,7 @@
             <button class="btn btn-primary" type="submit">Register model</button>
           </form>
           <div class="table-container"><table class="data-table">
-            <thead><tr><th>Name</th><th>Provider</th><th>Provider model</th><th>Secret reference</th><th>State</th></tr></thead>
+            <thead><tr><th>Name</th><th>Provider</th><th>Provider model</th><th>Secret reference</th><th>State</th><th>Gateway routing</th></tr></thead>
             <tbody id="models-table"></tbody>
           </table></div>
         </section>

@@ -1,6 +1,6 @@
 # Initial Architecture Observations
 
-**Purpose:** Capture the architecture decisions and open questions from the review of AI-Governance-Plane, agentgateway, and the Agentgateway/APIM articles discussed on 2026-10-16.
+**Purpose:** Capture source-backed architecture decisions and open questions from the review of AI-Governance-Plane, agentgateway, and the Agentgateway/APIM articles discussed on 2026-10-16.
 
 ## Executive view
 
@@ -62,11 +62,13 @@ The environment configuration should declare which policy systems are enabled, t
 
 ### Current implementation state from repository review
 
-- Present in source: OIDC authentication and issuer-scoped memberships, tenant/application/model registries, approval/onboarding flows, route intent translation to Kubernetes resources, reconciliation/status read-back, audit and telemetry surfaces, MCP registry/discovery, budget records, and policy revision history.
+- Present in source: OIDC authentication and issuer-scoped memberships, tenant/application/model registries, approval/onboarding flows, route intent translation to a validated subset of Kubernetes resources, synchronous apply/status read-back plus a database-backed stale-pending recovery worker, audit and telemetry surfaces, MCP registry/discovery, budget records, and policy revision history.
 - Not established as end-to-end runtime behavior: live agentgateway CRD compatibility, a real inference request through the gateway, runtime key acceptance, gateway telemetry availability, MCP policy publication/enforcement, and hard budget enforcement.
 - APIM is not currently an implemented traffic hop in this repository. The two-path design is an architecture target; integration work must add APIM configuration/identity/observability ownership and test both paths.
 - A2A integration and a full external CMDB/ITSM/OpenFGA/OPA/Azure Policy connector are not established by the current source surfaces reviewed.
 - A database hash chain is useful audit evidence but is not, by itself, immutable storage or a compliance certification. Stronger evidence requirements may call for external anchoring or WORM storage.
+- No durable typed environment/integration registry is currently persisted. Multi-issuer OIDC, Kubernetes target, telemetry endpoints, and MCP discovery host restrictions use bootstrap/environment configuration; the provider-neutral record in [the canonical architecture](architect.md) is a target design.
+- The full Python suite was executed after the current source tranche and passed **101 tests with 2 skipped**. This does not verify a live PostgreSQL migration, deployed Kubernetes CRDs/controller, APIM ingress, gateway inference, or runtime telemetry.
 
 ## Recommended configuration model
 
@@ -75,7 +77,7 @@ Keep environment-specific configuration separate from agent and policy intent:
 1. **Environment/integration registry:** environment identifier; Kubernetes cluster/namespace; pinned gateway release and supported API capabilities; ingress modes enabled; OIDC provider records; CMDB/ITSM endpoints and secret references; policy-engine connections; telemetry destinations; secret-manager references.
 2. **Agent/application record:** stable internal ID and source-system IDs; owner/team; environment; lifecycle; approved backend/tool references; allowed ingress path(s); workload identity reference.
 3. **Versioned desired configuration:** routes and gateway-supported runtime policy references, with approval and audit linkage.
-4. **Observed state:** Kubernetes resource generation and controller conditions, plus separately reported traffic/telemetry evidence. Never collapse desired and observed state into one status.
+4. **Controller-observed state:** Kubernetes resource generation and current-generation controller conditions, plus separately reported traffic/telemetry evidence. Never collapse desired and observed state into one status; a controller condition is not request-level runtime proof.
 
 Environment variables should carry deployment bootstrap values (database URL, OIDC discovery configuration, Kubernetes connection settings, secret references, telemetry endpoints), not become the durable inventory of all providers, agents, and policies. Secret values belong in a secret manager; the plane and generated resources should carry references where supported.
 
@@ -88,6 +90,7 @@ Environment variables should carry deployment bootstrap values (database URL, OI
 - Which policy engine is authoritative for each decision type, and how will each be called/enforced at runtime?
 - Which pinned agentgateway Kubernetes release/API can express required OpenAPI-to-MCP behavior, external authorization, and MCP tool policies?
 - What telemetry fields and evidence-retention guarantees are required for both ingress paths?
+- Which service team provides the network trust controls, TLS termination, workload identity, and egress restrictions that are not defined in this repository?
 
 ## References
 

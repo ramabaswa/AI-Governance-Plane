@@ -317,6 +317,44 @@ body {
   border-color: var(--border-focus);
 }
 
+.capability-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin: 14px 0 22px;
+}
+
+.capability-card {
+  padding: 16px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+
+.capability-card strong,
+.capability-state {
+  display: block;
+}
+
+.capability-state {
+  margin-top: 8px;
+  color: var(--status-warning);
+  font-weight: 700;
+}
+
+.capability-card p {
+  margin-top: 8px;
+}
+
+.capability-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px 24px;
+  margin: 12px 0 0 20px;
+  color: var(--text-secondary);
+  text-transform: capitalize;
+}
+
 .kpi-label {
   display: block;
   font-size: 11.5px;
