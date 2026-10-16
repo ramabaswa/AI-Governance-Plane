@@ -30,6 +30,7 @@ class ApplicationUpdate(BaseModel):
 class ApplicationLifecycleUpdate(BaseModel):
     target_state: ApplicationLifecycle
     reason: Optional[str] = None
+    approval_request_id: Optional[str] = None
 
 
 class VirtualKey(BaseModel):

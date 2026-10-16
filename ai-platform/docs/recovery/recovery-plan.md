@@ -1,7 +1,7 @@
 # Implementation and Verification Plan
 
-**Status:** Gates 0–2 approved; the approved A–F implementation and its focused
-tests have been added. Gate 3 execution has not been authorized.
+**Status:** Gates 0–2 approved; the expanded governance source, focused tests,
+and documentation have been added. Gate 3 execution has not been authorized.
 
 ## Guardrails
 
@@ -16,8 +16,9 @@ tests have been added. Gate 3 execution has not been authorized.
 5. Do not claim production identity, gateway enforcement, real usage metrics,
    migrations, deployment readiness, or passing tests without execution
    evidence.
-6. MCP, onboarding, approvals, FinOps/budgets, and automated drift remediation
-   are outside the approved A–F slice.
+6. MCP policy enforcement, FinOps hard caps, and automated drift remediation
+   remain unavailable; source workflows must not be described as those runtime
+   controls.
 
 ## Gate status
 
@@ -26,13 +27,15 @@ tests have been added. Gate 3 execution has not been authorized.
 The existing workspace was assessed, upstream/source references and scope
 were reviewed, and wireframes/interactions were approved. The approved
 implementation choices are PostgreSQL, generic OIDC, OTel Collector with
-Tempo/Prometheus, snake_case Python feature packages, and the A–F control-plane
-slice.
+Tempo/Prometheus, snake_case Python feature packages, and the control-plane
+feature set described in [MVP scope](../architecture/mvp-scope.md).
 
 ### Gate 3 — Implementation present; execution pending
 
-The A–F source changes, focused tests, Kubernetes/deployment configuration,
-console updates, and related documentation are present. Tests, builds,
+The source changes for identity, registry, onboarding, approvals, MCP
+discovery/policy intent, advisory budgets, policy history/rollback, operations,
+and related A–F features are present with focused tests, deployment
+configuration, console updates, and documentation. Tests, builds,
 migrations, containers, deployments, browser checks, and live integrations
 remain unexecuted per the user's instruction.
 

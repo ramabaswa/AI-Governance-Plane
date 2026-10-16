@@ -102,6 +102,87 @@ class GatewayRouteRecord(Base):
     updated_at: Mapped[int] = mapped_column(Integer, nullable=False)
 
 
+class ApprovalRequestRecord(Base):
+    __tablename__ = "approval_requests"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), index=True, nullable=False)
+    policy_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    target_resource_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    target_environment: Mapped[str] = mapped_column(String(32), nullable=False)
+    change_summary: Mapped[str] = mapped_column(Text, nullable=False)
+    proposed_diff: Mapped[str] = mapped_column(Text, nullable=False)
+    requested_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
+    decided_by: Mapped[str | None] = mapped_column(String(255))
+    decided_at: Mapped[int | None] = mapped_column(Integer)
+    decision_comments: Mapped[str | None] = mapped_column(Text)
+    applied_at: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class OnboardingRequestRecord(Base):
+    __tablename__ = "onboarding_requests"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), index=True, nullable=False)
+    requested_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    request_data: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
+    reviewed_by: Mapped[str | None] = mapped_column(String(255))
+    reviewed_at: Mapped[int | None] = mapped_column(Integer)
+    review_comments: Mapped[str | None] = mapped_column(Text)
+    application_id: Mapped[str | None] = mapped_column(ForeignKey("applications.id"))
+    completed_at: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class BudgetPolicyRecord(Base):
+    __tablename__ = "budget_policies"
+
+    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), primary_key=True)
+    monthly_budget_usd: Mapped[float] = mapped_column(Float, nullable=False)
+    alert_threshold_pct: Mapped[int] = mapped_column(Integer, nullable=False, default=80)
+    updated_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    updated_at: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class MCPServerRecord(Base):
+    __tablename__ = "mcp_servers"
+    __table_args__ = (UniqueConstraint("tenant_id", "name", name="uq_mcp_server_tenant_name"),)
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), index=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(64), nullable=False)
+    transport_url: Mapped[str] = mapped_column(String(2048), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    discovered_tools: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
+    policies: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
+    discovery_state: Mapped[str] = mapped_column(String(32), nullable=False, default="unverified")
+    created_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_at: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class PolicyRevisionRecord(Base):
+    __tablename__ = "policy_revisions"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "resource_id", "revision", name="uq_policy_revision_resource"),
+    )
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), index=True, nullable=False)
+    resource_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    resource_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    state: Mapped[str] = mapped_column(String(32), nullable=False)
+    snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    checksum: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_at: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
 class AuditEventRecord(Base):
     __tablename__ = "audit_events"
 

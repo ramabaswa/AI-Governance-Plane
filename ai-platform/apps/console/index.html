@@ -21,6 +21,12 @@
         <button class="nav-link" data-section="applications">Applications</button>
         <button class="nav-link" data-section="models">Model catalog</button>
         <button class="nav-link" data-section="routes">Gateway routes</button>
+        <button class="nav-link" data-section="onboarding">Self-service onboarding</button>
+        <button class="nav-link" data-section="approvals">Approvals</button>
+        <button class="nav-link" data-section="mcp">MCP registry</button>
+        <button class="nav-link" data-section="finops">Budgets & spend</button>
+        <button class="nav-link" data-section="operations">Operations</button>
+        <button class="nav-link" data-section="policies">Policy revisions</button>
         <button class="nav-link" data-section="traces">Traces & metrics</button>
         <button class="nav-link" data-section="audit">Audit evidence</button>
       </nav>
@@ -49,6 +55,14 @@
       </section>
 
       <p id="notice" role="status" aria-live="polite"></p>
+      <div id="credential-result" class="card" hidden>
+        <h3>One-time credential</h3>
+        <p id="credential-state" class="text-muted"></p>
+        <code id="credential-value"></code>
+        <button id="copy-credential" class="btn btn-outline btn-sm">Copy</button>
+        <button id="clear-credential" class="btn btn-outline btn-sm" type="button">Clear from screen</button>
+        <p class="text-muted">Copy and store this securely now. It is not recoverable from the control plane after this response.</p>
+      </div>
 
       <div class="tab-content">
         <section id="section-overview" class="tab-pane active">
@@ -76,15 +90,8 @@
             <input id="application-models" class="form-input" placeholder="claude-3-5-sonnet">
             <button class="btn btn-primary" type="submit">Register application</button>
           </form>
-          <div id="credential-result" class="card" hidden>
-            <h3>One-time credential</h3>
-            <p id="credential-state" class="text-muted"></p>
-            <code id="credential-value"></code>
-            <button id="copy-credential" class="btn btn-outline btn-sm">Copy</button>
-            <p class="text-muted">The key is stored as a SHA-256 verifier in the gateway API-key catalog. Gateway runtime observation is not implied.</p>
-          </div>
           <div class="table-container"><table class="data-table">
-            <thead><tr><th>Name</th><th>Environment</th><th>Models</th><th>Lifecycle</th><th>Key prefix</th></tr></thead>
+            <thead><tr><th>Name</th><th>Application ID</th><th>Environment</th><th>Models</th><th>Lifecycle</th><th>Key prefix</th></tr></thead>
             <tbody id="applications-table"></tbody>
           </table></div>
         </section>
@@ -129,6 +136,110 @@
             <thead><tr><th>Name</th><th>Path</th><th>Backend</th><th>State</th><th>Action</th></tr></thead>
             <tbody id="routes-table"></tbody>
           </table></div>
+        </section>
+
+        <section id="section-onboarding" class="tab-pane">
+          <h2>Self-service onboarding</h2>
+          <p class="text-muted">A reviewer must approve the request. Only its requester can complete it. Credentials are returned once.</p>
+          <form id="onboarding-form" class="card">
+            <label for="onboarding-name">Application name</label>
+            <input id="onboarding-name" class="form-input" required minlength="2" maxlength="64" pattern="[a-z0-9-]+">
+            <label for="onboarding-environment">Environment</label>
+            <select id="onboarding-environment" class="form-input">
+              <option value="development">Development</option><option value="staging">Staging</option><option value="production">Production</option>
+            </select>
+            <label for="onboarding-models">Requested model names (comma-separated)</label>
+            <input id="onboarding-models" class="form-input">
+            <label for="onboarding-quota">Requested monthly token quota (not enforced)</label>
+            <input id="onboarding-quota" class="form-input" type="number" min="1" value="1000000">
+            <button class="btn btn-primary" type="submit">Submit request</button>
+          </form>
+          <div class="table-container"><table class="data-table">
+            <thead><tr><th>Application</th><th>Environment</th><th>Requester</th><th>Status</th><th>Application ID</th><th>Action</th></tr></thead>
+            <tbody id="onboarding-table"></tbody>
+          </table></div>
+        </section>
+
+        <section id="section-approvals" class="tab-pane">
+          <h2>Approval requests</h2>
+          <p class="text-muted">Only production application activation consumes approvals. Requesters cannot approve their own requests.</p>
+          <form id="approval-form" class="card">
+            <label for="approval-type">Request type</label>
+            <select id="approval-type" class="form-input">
+              <option value="application_activation">Production application activation</option>
+              <option value="policy_change">Other policy request (record only)</option>
+            </select>
+            <label for="approval-resource">Target resource ID</label>
+            <input id="approval-resource" class="form-input" required>
+            <label for="approval-summary">Change summary</label>
+            <input id="approval-summary" class="form-input" required>
+            <label for="approval-diff">Proposed change</label>
+            <textarea id="approval-diff" class="form-input" required></textarea>
+            <button class="btn btn-primary" type="submit">Request approval</button>
+          </form>
+          <div class="table-container"><table class="data-table">
+            <thead><tr><th>Type / target</th><th>Requester</th><th>Status</th><th>Decision</th><th>Action</th></tr></thead>
+            <tbody id="approvals-table"></tbody>
+          </table></div>
+          <form id="activation-form" class="card">
+            <h3>Activate approved production application</h3>
+            <label for="activation-app">Application ID</label><input id="activation-app" class="form-input" required>
+            <label for="activation-approval">Approved request ID</label><input id="activation-approval" class="form-input" required>
+            <button class="btn btn-primary" type="submit">Activate and issue one-time key</button>
+          </form>
+        </section>
+
+        <section id="section-mcp" class="tab-pane">
+          <h2>MCP server registry</h2>
+          <p class="text-muted">Discovery makes real HTTPS calls only to exact hosts in MCP_ALLOWED_HOSTS. Stored tool policies are not enforced by the gateway.</p>
+          <form id="mcp-form" class="card">
+            <label for="mcp-name">Server name</label><input id="mcp-name" class="form-input" required pattern="[a-z0-9-]+">
+            <label for="mcp-url">HTTPS MCP endpoint</label><input id="mcp-url" class="form-input" type="url" required placeholder="https://mcp.example.com/rpc">
+            <button class="btn btn-primary" type="submit">Register server</button>
+          </form>
+          <div class="table-container"><table class="data-table">
+            <thead><tr><th>Name</th><th>Endpoint</th><th>Discovery</th><th>Tools</th><th>Policy enforcement</th><th>Action</th></tr></thead>
+            <tbody id="mcp-table"></tbody>
+          </table></div>
+          <form id="mcp-policy-form" class="card">
+            <h3>Store tool policy intent</h3>
+            <label for="mcp-policy-server">Server ID</label><input id="mcp-policy-server" class="form-input" required>
+            <label for="mcp-policy-tool">Tool name</label><input id="mcp-policy-tool" class="form-input" required>
+            <label for="mcp-policy-cel">CEL expression</label><input id="mcp-policy-cel" class="form-input" value="true" required>
+            <label for="mcp-policy-roles">Allowed roles (comma-separated)</label><input id="mcp-policy-roles" class="form-input">
+            <button class="btn btn-primary" type="submit">Save policy intent</button>
+          </form>
+        </section>
+
+        <section id="section-finops" class="tab-pane">
+          <h2>Advisory budget</h2>
+          <p class="text-muted">No request hard caps are enforced. Spend is shown only from a configured tenant-scoped Prometheus query; missing data is unknown.</p>
+          <form id="budget-form" class="card">
+            <label for="budget-monthly">Monthly budget (USD)</label><input id="budget-monthly" class="form-input" type="number" min="0.01" step="0.01" required>
+            <label for="budget-threshold">Alert threshold (%)</label><input id="budget-threshold" class="form-input" type="number" min="1" max="100" value="80" required>
+            <button class="btn btn-primary" type="submit">Save advisory budget</button>
+          </form>
+          <pre id="budget-status">Not loaded.</pre>
+        </section>
+
+        <section id="section-operations" class="tab-pane">
+          <h2>Read-only route observations</h2>
+          <p class="text-muted">This view reads controller/resource status. It does not repair drift or write Kubernetes resources.</p>
+          <button id="refresh-drift" class="btn btn-outline">Refresh observations</button>
+          <pre id="operations-output">Not queried.</pre>
+        </section>
+
+        <section id="section-policies" class="tab-pane">
+          <h2>Route policy revisions</h2>
+          <p class="text-muted">Rollback submits a new desired revision; it does not guarantee runtime recovery.</p>
+          <form id="revisions-form" class="card">
+            <label for="revision-route">Route ID</label><input id="revision-route" class="form-input" required>
+            <button class="btn btn-outline" type="submit">Load revisions</button>
+          </form>
+          <label for="revision-source">Source revision to restore</label>
+          <select id="revision-source" class="form-input"></select>
+          <button id="rollback-button" class="btn btn-primary" type="button">Submit rollback</button>
+          <pre id="revisions-output">No revisions loaded.</pre>
         </section>
 
         <section id="section-traces" class="tab-pane">

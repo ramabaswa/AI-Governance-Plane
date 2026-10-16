@@ -1,65 +1,61 @@
-"""Human-in-the-Loop (HITL) Approvals router."""
+"""Durable tenant-scoped approval requests."""
 
-from typing import List
 from fastapi import APIRouter, Depends, Path
+from sqlalchemy.orm import Session
+
+from features.approvals import service
+from features.database import get_db_session
+from shared.authorization.dependencies import (
+    AuthenticatedUser,
+    require_permission,
+    require_tenant_context,
+)
 from shared.contracts.policy import (
+    ApprovalDecisionRequest,
     ApprovalRequest,
     ApprovalRequestCreate,
-    ApprovalDecisionRequest,
 )
-from shared.authorization.dependencies import (
-    get_current_user,
-    require_tenant_context,
-    require_permission,
-    AuthenticatedUser,
-)
-from features.state_store import STATE_STORE
 
 router = APIRouter(prefix="/api/v1/approvals", tags=["Policy Approvals"])
 
 
-@router.get("", response_model=List[ApprovalRequest])
+@router.get("", response_model=list[ApprovalRequest])
 async def list_approvals(
     tenant_id: str = Depends(require_tenant_context),
-    current_user: AuthenticatedUser = Depends(get_current_user),
+    _user: AuthenticatedUser = Depends(require_permission("approval:read")),
+    session: Session = Depends(get_db_session),
 ):
-    """List pending and historical approval requests."""
-    return [req for req in STATE_STORE.approvals.values() if req.tenant_id == tenant_id]
+    return service.list_requests(session, tenant_id)
 
 
 @router.post("", status_code=201, response_model=ApprovalRequest)
 async def create_approval(
-    req: ApprovalRequestCreate,
+    request: ApprovalRequestCreate,
     tenant_id: str = Depends(require_tenant_context),
-    current_user: AuthenticatedUser = Depends(get_current_user),
+    user: AuthenticatedUser = Depends(require_permission("approval:create")),
+    session: Session = Depends(get_db_session),
 ):
-    """Submit a policy change for approval."""
-    return STATE_STORE.create_approval_request(
+    return service.create_request(
+        session,
         tenant_id=tenant_id,
-        policy_type=req.policy_type,
-        target_resource_id=req.target_resource_id,
-        target_environment=req.target_environment,
-        change_summary=req.change_summary,
-        proposed_diff=req.proposed_diff,
-        requested_by=current_user.subject,
+        actor=user.subject,
+        request=request,
     )
 
 
 @router.post("/{request_id}/decide", response_model=ApprovalRequest)
 async def decide_approval(
-    req: ApprovalDecisionRequest,
+    request: ApprovalDecisionRequest,
     request_id: str = Path(...),
     tenant_id: str = Depends(require_tenant_context),
-    current_user: AuthenticatedUser = Depends(require_permission("approval:decide")),
+    user: AuthenticatedUser = Depends(require_permission("approval:decide")),
+    session: Session = Depends(get_db_session),
 ):
-    """
-    Decide an approval request (approve or deny).
-    Strict Rule: Self-approval is rejected and committed as 'denied'.
-    """
-    return STATE_STORE.decide_approval_request(
+    return service.decide_request(
+        session,
         tenant_id=tenant_id,
         request_id=request_id,
-        decision=req.decision,
-        decided_by=current_user.subject,
-        comments=req.comments,
+        actor=user.subject,
+        decision=request.decision,
+        comments=request.comments,
     )

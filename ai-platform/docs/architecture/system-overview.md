@@ -1,6 +1,6 @@
 # System Overview
 
-**Status:** Documents the implemented A–F source slice and its intended integration boundary.  
+**Status:** Documents the implemented governance source and its intended integration boundary.
 **Data-plane reference:** agentgateway OSS `v1.6.0` at commit `ea5608642b9d5c94c5baf5fd9f2f9849b808e963`.  
 **Verification status:** Application, migration, Kubernetes, and telemetry paths have not been executed or verified against a live environment. Local Compose does not include agentgateway.
 
@@ -15,7 +15,7 @@ flowchart LR
     subgraph CP["AI Governance Plane — control plane"]
         UI["Existing console"]
         API["FastAPI control API"]
-        DB[("PostgreSQL\nregistry, membership, audit")]
+        DB[("PostgreSQL\nregistry, workflows, audit, revisions")]
         TelemetryReader["Tenant-authorized telemetry reader"]
     end
 
@@ -38,6 +38,7 @@ flowchart LR
     Kube --> Controller --> Gateway
     Controller -->|"resource status"| Kube
     API -->|"read status only"| Kube
+    API -->|"allowlisted MCP discovery only"| MCP
     Secrets --> Gateway
 
     Client -->|"LLM/MCP requests; no Control API hop"| Gateway
@@ -50,6 +51,12 @@ flowchart LR
 ```
 
 **The Control API is not an inference proxy.** It manages identity-scoped resources and reads evidence; clients send LLM and MCP traffic directly to agentgateway.
+
+Approval/onboarding records, advisory budgets, MCP registry/policy intent, and
+route revisions are persisted by the Control API. MCP discovery is a bounded
+management-plane call to an exact allowlisted HTTPS host; stored MCP policies
+are not published to the gateway and do not authorize data-plane tool calls.
+Operations drift checks are read-only.
 
 ## Request sequence (target)
 
@@ -129,7 +136,7 @@ the existing unverified direct `/config/apply` HTTP assumption.
 | Provider secrets | Kubernetes Secret store; platform keeps references |
 | Audit events | Control-plane database with hash-chain records |
 | Request usage/traces | OTel Collector, Tempo and Prometheus are configured; gateway usage is not yet verified |
-| Approval decisions | Deferred; not mounted in the active API |
+| Approval decisions | SQLAlchemy-backed approval requests; only production application activation consumes an approved request. |
 
 ## Current workspace surfaces and limits
 
@@ -145,7 +152,9 @@ The active API surfaces are implemented in source but are not proof of productio
 | `/api/v1/audit` | Tenant-scoped audit evidence | Persistence and chain verification have not been tested in this handoff. |
 | `/api/v1/observability` | Tempo traces and configured Prometheus metrics | Gateway request/token metrics are explicit unavailable values unless configured and emitted. |
 
-MCP, approvals, onboarding, FinOps, and automated drift routers are not mounted.
+Approval, onboarding, MCP registry/discovery, budget, read-only operations, and
+policy revision routes are mounted. MCP policy records are not published to
+the gateway, budget enforcement is advisory, and drift checks do not remediate.
 The Kubernetes client no longer calls a direct `/config/apply` endpoint, and a
 Kubernetes write acknowledgement alone is not reported as controller-observed
 active state.
@@ -154,5 +163,5 @@ active state.
 
 - The pinned source, lab source files and OSS/Enterprise distinctions are recorded in [source-inventory.md](../references/source-inventory.md).
 - Feature-level evidence, adaptation needs and verification state are recorded in [feature-source-matrix.md](../references/feature-source-matrix.md).
-- Stable identifiers F-001 through F-013 are retained from the wireframe coverage matrix; see [MVP scope](mvp-scope.md) for the active implementation subset and deferred work.
+- Stable identifiers F-001 through F-013 are retained from the wireframe coverage matrix; see [MVP scope](mvp-scope.md) for active source and explicit enforcement gaps.
 - Tests have not been executed. See [test traceability](../features/test-traceability.md) for coverage mapped to current test files.

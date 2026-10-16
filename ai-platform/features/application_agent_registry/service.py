@@ -9,6 +9,7 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from features.approvals.service import consume_approved_request
 from features.audit_evidence.service import append_event
 from features.application_agent_registry.naming import tenant_api_key_configmap_name, tenant_fingerprint
 from features.persistence import ApplicationRecord, ModelBackendRecord, VirtualKeyRecord
@@ -232,7 +233,8 @@ def update_application_lifecycle(
     target_state: ApplicationLifecycle,
     actor: str,
     kubernetes_client: AgentgatewayKubernetesClient,
-) -> Application:
+    approval_request_id: str | None = None,
+) -> tuple[Application, str | None]:
     row = session.scalar(
         select(ApplicationRecord).where(
             ApplicationRecord.id == app_id,
@@ -241,10 +243,55 @@ def update_application_lifecycle(
     )
     if row is None:
         raise ResourceNotFoundError("Application", app_id)
+    approval = None
+    raw_key = None
+    new_key = None
     if row.environment == "production" and target_state == ApplicationLifecycle.ACTIVE:
-        raise PolicyApprovalRequiredError(
-            "Production applications cannot be activated while the approval workflow is unavailable"
+        if not approval_request_id:
+            raise PolicyApprovalRequiredError("Production activation requires an approved request")
+        approval = consume_approved_request(
+            session,
+            tenant_id=tenant_id,
+            request_id=approval_request_id,
+            actor=actor,
+            policy_type="application_activation",
+            target_resource_id=app_id,
         )
+        existing_key = session.scalar(
+            select(VirtualKeyRecord.id).where(
+                VirtualKeyRecord.tenant_id == tenant_id,
+                VirtualKeyRecord.application_id == app_id,
+                VirtualKeyRecord.is_revoked.is_(False),
+                VirtualKeyRecord.provisioning_state == "catalog_configured",
+            )
+        )
+        if existing_key is None:
+            raw_key = f"agw_live_{secrets.token_urlsafe(32)}"
+            key_prefix = raw_key[:16]
+            new_key = VirtualKeyRecord(
+                id=f"vk-{uuid.uuid4().hex[:12]}",
+                tenant_id=tenant_id,
+                application_id=app_id,
+                key_prefix=key_prefix,
+                key_hash=hashlib.sha256(raw_key.encode("utf-8")).hexdigest(),
+                created_at=int(time.time()),
+                is_revoked=False,
+                provisioning_state="pending",
+            )
+            row.virtual_key_prefix = key_prefix
+            session.add(new_key)
+            append_event(
+                session,
+                tenant_id=tenant_id,
+                actor=actor,
+                action=AuditAction.VIRTUAL_KEY_MINTED,
+                resource_type="application",
+                resource_id=app_id,
+                details={
+                    "key_prefix": key_prefix,
+                    "approval_request_id": approval_request_id,
+                },
+            )
     previous_state = row.lifecycle_state
     row.lifecycle_state = target_state.value
     row.updated_at = int(time.time())
@@ -296,7 +343,72 @@ def update_application_lifecycle(
             details={"key_count": len(keys), "runtime_observation": "unverified"},
         )
         session.commit()
-    return Application.model_validate(row, from_attributes=True)
+    if new_key is not None:
+        try:
+            kubernetes_client.apply([
+                tenant_api_key_configmap(
+                    session,
+                    tenant_id=tenant_id,
+                    include_pending_key_ids={new_key.id},
+                )
+            ])
+        except GatewayReconciliationError as error:
+            row.lifecycle_state = previous_state
+            row.virtual_key_prefix = None
+            new_key.is_revoked = True
+            new_key.provisioning_state = "failed"
+            if approval is not None:
+                approval.applied_at = None
+            append_event(
+                session,
+                tenant_id=tenant_id,
+                actor=actor,
+                action=AuditAction.VIRTUAL_KEY_PROVISION_FAILED,
+                resource_type="application",
+                resource_id=app_id,
+                details={"key_prefix": new_key.key_prefix, "approval_request_id": approval_request_id},
+            )
+            append_event(
+                session,
+                tenant_id=tenant_id,
+                actor=actor,
+                action=AuditAction.APPLICATION_LIFECYCLE_CHANGED,
+                resource_type="application",
+                resource_id=app_id,
+                details={"from": target_state.value, "to": previous_state, "reason": "credential_provisioning_failed"},
+            )
+            session.commit()
+            try:
+                kubernetes_client.apply([tenant_api_key_configmap(session, tenant_id=tenant_id)])
+            except GatewayReconciliationError as cleanup_error:
+                error.details.append({
+                    "credential_cleanup_failed": True,
+                    "reason": cleanup_error.message,
+                })
+            raise error
+        new_key.provisioning_state = "catalog_configured"
+        append_event(
+            session,
+            tenant_id=tenant_id,
+            actor=actor,
+            action=AuditAction.VIRTUAL_KEY_PROVISIONED,
+            resource_type="application",
+            resource_id=app_id,
+            details={"key_prefix": new_key.key_prefix},
+        )
+        session.commit()
+    if approval is not None:
+        append_event(
+            session,
+            tenant_id=tenant_id,
+            actor=actor,
+            action=AuditAction.POLICY_APPROVAL_APPLIED,
+            resource_type="approval_request",
+            resource_id=approval.id,
+            details={"application_id": app_id},
+        )
+        session.commit()
+    return Application.model_validate(row, from_attributes=True), raw_key
 
 
 def active_virtual_keys(session: Session, tenant_id: str) -> list[VirtualKey]:

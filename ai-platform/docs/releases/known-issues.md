@@ -22,10 +22,16 @@ run for this handoff.
 
 ## Product scope
 
-- MCP governance, onboarding, approvals, budget/cost enforcement, and automated
-  drift remediation are deferred and not mounted in the active API.
-- Production application records remain drafts and receive no credentials
-  while approval workflows are unavailable.
+- Production application activation requires an approved request; the new
+  approval and onboarding workflows have not been exercised against a live
+  deployment.
+- MCP discovery requires a configured exact-host allowlist and egress controls.
+  Stored tool policies are not published to or enforced by the gateway.
+- Budget reporting depends on a month-scoped tenant Prometheus query. Hard-cap
+  cost enforcement is unavailable.
+- Operations reports read-only drift; automated remediation is not
+  implemented. Route rollback depends on Kubernetes apply and controller
+  status, neither of which has been live-validated.
 - Provider health and Secret existence are not inferred from catalog entries.
 - The audit hash chain is not an immutable/compliance ledger; retention,
   signing, and export guarantees are not established.

@@ -1,31 +1,36 @@
-# Onboarding Scope
+# Self-Service Onboarding
 
-**Status:** Self-service onboarding (F-003) and MCP onboarding are deferred;
-their routers and workflows are not part of the active API.
+**Status:** API source is implemented; application, database, Kubernetes, and
+end-to-end behavior have not been executed or validated.
 
-## Application registration
+## Request and review
 
-Application registration is available directly through the tenant-scoped
-application API and console, not through a four-step onboarding wizard.
+1. An authenticated tenant member with `onboarding:create` submits
+   `POST /api/v1/onboarding/requests`.
+2. The tenant's authorized reviewers with `onboarding:review` can list and
+   approve or deny requests through `POST
+   /api/v1/onboarding/requests/{request_id}/review`.
+3. Requesters cannot review their own requests. A reviewer cannot complete a
+   request unless they are also the original requester.
+4. After approval, only the original requester can call
+   `POST /api/v1/onboarding/requests/{request_id}/complete`.
 
-- Tenant membership and permissions determine access; a client-selected
-  tenant is not authority.
-- Development and staging registrations may receive a one-time generated
-  credential. The raw credential is not returned on subsequent reads.
-- Production applications are stored as drafts without credentials. They
-  cannot be activated while the approval workflow is unavailable.
-- Model credentials are represented by Kubernetes Secret references; the
-  Control API does not accept provider secret plaintext.
+Completion creates the registered application. Eligible development and
+staging requests return a generated credential once; copy it from the response.
+Production requests create a draft without a credential and use the separate
+production activation approval flow. If completion was committed but the
+response was lost, the raw credential cannot be recovered or reissued from the
+request; revoke the existing key and follow the application key lifecycle.
 
-Credential catalog configuration and controller/runtime observation are
-separate states. A catalog write does not establish that agentgateway accepted
-or used a key.
+## Boundaries
 
-## MCP onboarding
+- Tenant ID is resolved from OIDC identity and stored membership, not from the
+  submitted request body.
+- Requested model names are validated against active models in that tenant.
+- Provider secret plaintext is never requested; supply only the approved
+  Kubernetes Secret reference through model registration.
+- Onboarding creates application metadata/key catalog intent. It does not
+  prove that agentgateway accepted the key or that an inference request works.
 
-MCP server registration, discovery, policy management, and tool invocation are
-not available in the active A–F implementation. Do not use this guide as
-instructions to configure a live MCP integration. Any future MCP workflow
-requires separate scope approval and end-to-end compatibility validation.
-
-For supported setup steps, see the [project README](../../README.md).
+See [the user guide](../users/user-guide.md) and [test
+traceability](../features/test-traceability.md).

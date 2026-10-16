@@ -12,12 +12,18 @@ from features.application_agent_registry.service import (
     tenant_api_key_configmap,
 )
 from features.guardrails.service import validate_prompt_guard_rules
+from features.policy_lifecycle import service as policy_lifecycle_service
 from features.persistence import GatewayRouteRecord, ModelBackendRecord
 from integrations.agentgateway.reconciler import AgentgatewayReconciler
 from shared.contracts.audit import AuditAction
 from shared.contracts.model import ModelBackend
 from shared.contracts.route import GatewayRoute, GatewayRouteCreate
-from shared.errors.exceptions import ResourceConflictError, ResourceNotFoundError, ValidationError
+from shared.errors.exceptions import (
+    GatewayReconciliationError,
+    ResourceConflictError,
+    ResourceNotFoundError,
+    ValidationError,
+)
 from shared.validation.route_validator import validate_path_prefix, validate_traffic_weights
 
 
@@ -153,6 +159,11 @@ def apply_route(
     row.updated_at = int(time.time())
     row.revision_id += 1
     route = GatewayRoute.model_validate(row, from_attributes=True)
+    policy_lifecycle_service.create_route_revision(
+        session,
+        row=row,
+        actor=actor,
+    )
     append_event(
         session,
         tenant_id=tenant_id,
@@ -165,13 +176,36 @@ def apply_route(
     session.flush()
     session.commit()
     active_reconciler = reconciler or AgentgatewayReconciler()
-    active_reconciler.apply(
-        [route],
-        models,
-        additional_resources=[tenant_api_key_configmap(session, tenant_id=tenant_id)],
-    )
-    finalize_pending_revocations(session, tenant_id)
-    session.commit()
+    try:
+        active_reconciler.apply(
+            [route],
+            models,
+            additional_resources=[tenant_api_key_configmap(session, tenant_id=tenant_id)],
+        )
+        finalize_pending_revocations(session, tenant_id)
+        session.commit()
+    except GatewayReconciliationError:
+        row.lifecycle_state = "failed"
+        row.updated_at = int(time.time())
+        policy_lifecycle_service.update_route_revision_state(
+            session,
+            tenant_id=tenant_id,
+            route_id=route_id,
+            revision_number=row.revision_id,
+            state="failed",
+            actor=actor,
+        )
+        append_event(
+            session,
+            tenant_id=tenant_id,
+            actor=actor,
+            action=AuditAction.ROUTE_STATUS_CHANGED,
+            resource_type="gateway_route",
+            resource_id=route_id,
+            details={"to": "failed", "revision_id": row.revision_id},
+        )
+        session.commit()
+        raise
     return get_route_status(
         session,
         tenant_id=tenant_id,
@@ -204,6 +238,15 @@ def get_route_status(
     ).all()
     models = {model.id: ModelBackend.model_validate(model, from_attributes=True) for model in model_rows}
     status = (reconciler or AgentgatewayReconciler()).read_status(route, models)
+    policy_lifecycle_service.update_route_revision_state(
+        session,
+        tenant_id=tenant_id,
+        route_id=route_id,
+        revision_number=row.revision_id,
+        state=status["state"],
+        actor="agentgateway-controller-status",
+        details={"observed_active": status["observed_active"]},
+    )
     if row.lifecycle_state != status["state"]:
         previous_state = row.lifecycle_state
         row.lifecycle_state = status["state"]

@@ -1,7 +1,7 @@
 # Interaction Contracts and Lifecycle States
 
 **Phase:** 2 — Gate 2-approved design baseline  
-**Status:** These remain UX-facing target contracts, not a claim that every transition is implemented. Active endpoints and limitations are identified in [screen specifications](./screen-specifications.md).
+**Status:** Contracts describe source-level API behavior and required UI semantics. Runtime integration remains unverified; active endpoints and limitations are identified in [screen specifications](./screen-specifications.md).
 
 ## 1. Desired-configuration lifecycle
 
@@ -25,7 +25,7 @@ stateDiagram-v2
     Rejected --> Draft: User edits desired resource
 ```
 
-`Observed` must be bound to the resource identity and desired revision that was submitted. A stale status for an earlier resource version does not satisfy the transition. Production approval, quorum, and rollback are not part of this MVP state machine.
+`Observed` must be bound to the resource identity and desired revision that was submitted. A stale status for an earlier resource version does not satisfy the transition. Production application activation requires a separate matching approval. Route rollback restores a checksummed snapshot and submits it through the same Kubernetes path; it does not guarantee recovery. Quorum is not implemented.
 
 | State | User-facing meaning | Required evidence |
 |---|---|---|
@@ -59,7 +59,7 @@ stateDiagram-v2
 }
 ```
 
-The exact fields and schema are pending implementation-level verification against the pinned agentgateway CRDs. The interface must not let the client set authoritative tenant ownership. Unsupported fields fail validation; they are never ignored silently.
+The source API accepts route contracts, but exact schema compatibility still requires verification against the pinned agentgateway CRDs. The interface must not let the client set authoritative tenant ownership. Unsupported fields fail validation; they are never ignored silently.
 
 ### Validation response (proposed)
 
@@ -107,7 +107,7 @@ This response means only that the Kubernetes API accepted the write. The console
 }
 ```
 
-The UI preserves safe user input, shows the correlation ID, and provides a safe next step. It does not display stack traces, secrets, full upstream response bodies, or inferred success. Exact API envelope/versioning remains an implementation contract to verify before coding.
+The UI preserves safe user input, shows the correlation ID, and provides a safe next step. It does not display stack traces, secrets, full upstream response bodies, or inferred success. Exact envelope details follow the mounted API implementation and still require runtime/client compatibility verification.
 
 ## 3. Tenant and role contract
 
@@ -120,29 +120,31 @@ The UI preserves safe user input, shows the correlation ID, and provides a safe 
 ## 4. Application, model and secret interactions
 
 - Application creation uses the authenticated tenant context and returns a stable resource identifier and explicit lifecycle status.
-- Eligible development/staging credential material is returned once over the authenticated creation response and never regenerated as a success-shaped fallback. Production applications remain drafts without credentials until an approval workflow exists. The UI warns before revealing a credential and never writes it to local storage or logs.
+- Eligible development/staging credential material is returned once over the authenticated creation response and never regenerated as a success-shaped fallback. Production activation requires a matching, approved, unused request and returns the provisioned credential once. The UI warns before revealing a credential and never writes it to local storage or logs.
 - The catalog stores provider/model identifiers and Kubernetes Secret references, not plaintext provider keys.
 - A Secret reference is not labeled “valid” or “healthy” unless the backend actually verifies existence/access and returns evidence.
-- Usage quotas, virtual-key budgets and hard caps are omitted from the MVP interactions.
+- Onboarding records the requested token quota; actual quota enforcement is not established. FinOps budgets are advisory; hard caps are rejected/unavailable.
 
-## 5. MCP discovery and invocation contract (deferred)
+## 5. MCP discovery and policy contract
 
-- Discovery displays server identity, result timestamp, tool names, and a source/correlation ID from an actual MCP response.
+- Discovery uses actual MCP responses, requires HTTPS and an exact configured host allowlist, and disables redirects. Operator egress controls are still required.
 - Discovery timeout, transport failure, malformed result, or policy error is explicit; it never returns sample tools as if discovered.
-- Allowed and denied test calls traverse the pinned agentgateway deployment. Test evidence must demonstrate whether the request reached the MCP server.
+- Per-tool CEL policy records are persisted as intent only and explicitly report `not_published_to_gateway`. No allowed/denied tool-call test path is implemented.
 - Authorization of `tools/call` and visibility/filtering of `tools/list` are separate contracts. The UI does not promise hidden-tool behavior until the pinned OSS implementation passes that acceptance test.
-- Protect endpoint registration against unsafe network destinations, including unauthorized local/private addresses, according to the approved deployment policy.
+- Discovery currently has no authenticated MCP transport or pagination, and uses the configured protocol version; compatibility remains unverified.
 
 ## 6. Traces, audit and status interactions
 
 - Traces are tenant/application-scoped and sourced from a connected telemetry backend. Missing fields remain unavailable, not zero.
 - Audit records represent management events in the database-backed hash chain. The implementation is not a compliance ledger; signing/export and retention guarantees are not established.
-- Runtime state is read from the Kubernetes API/controller status for the managed resources. If status is stale or unavailable, show that condition and last observation time.
-- There is no force-reconcile, rollback, policy-approval, cost, or budget interaction in the approved MVP.
+- Runtime state and operations drift are read from Kubernetes API/controller status. The operations drift endpoint makes no writes; unavailability must not be shown as healthy.
+- Policy revision history and rollback are available in source. Rollback writes desired state through the Kubernetes path; live behavior is unverified.
+- Approval records support decisions with separation of duties; only matching production application activation consumes them. Other approval types do not trigger generic mutations.
+- Budgets show configured advisory thresholds and observed spend only if the tenant-scoped Prometheus query returns data. No force-reconcile, automatic remediation, or hard-cap behavior is available.
 
 ## 7. Concurrency, retries and idempotency
 
-- Mutations carry a resource revision/ETag or equivalent optimistic concurrency token once that API contract is implemented.
+- Revision/ETag concurrency tokens and stable idempotency keys are not consistently implemented; clients must not imply that arbitrary retries are safe.
 - On conflict, return a conflict state and require refresh/review; do not overwrite another administrator's newer change.
-- Retry is safe only for an idempotent operation with a stable request/idempotency key. The UI communicates whether a previous write outcome is unknown before allowing a retry.
+- A timeout after submission is **outcome unknown/pending**, not failed or successful until the relevant resource state is read back.
 - Any timeout after submission is **outcome unknown/pending**, not failed or successful until the resource status is read back.

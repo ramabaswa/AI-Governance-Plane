@@ -36,5 +36,8 @@ where = ["."]
 include = ["apps*", "shared*", "integrations*", "features*"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "features", "integrations"]
 python_files = "test_*.py"
+markers = [
+    "live_integration: opt-in checks against explicitly configured live services",
+]

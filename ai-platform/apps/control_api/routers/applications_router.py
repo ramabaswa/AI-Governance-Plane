@@ -88,15 +88,23 @@ async def update_application_lifecycle(
     kubernetes_client: AgentgatewayKubernetesClient = Depends(get_agentgateway_kubernetes_client),
     session: Session = Depends(get_db_session),
 ):
-    app = service.update_application_lifecycle(
+    app, raw_key = service.update_application_lifecycle(
         session,
         tenant_id=tenant_id,
         app_id=app_id,
         target_state=req.target_state,
         actor=current_user.subject,
         kubernetes_client=kubernetes_client,
+        approval_request_id=req.approval_request_id,
     )
-    return {"success": True, "data": app}
+    return {
+        "success": True,
+        "data": {
+            "application": app,
+            "virtual_key": raw_key,
+            "gateway_observation": "not_verified" if raw_key else "not_applicable",
+        },
+    }
 
 
 @router.post("/{app_id}/keys/revoke")

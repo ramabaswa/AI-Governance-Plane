@@ -1,9 +1,9 @@
 # Observability, Usage, and Metering
 
-**Status:** The A–F implementation includes control-API request
-instrumentation and configurable Tempo/Prometheus readers. Gateway usage,
-token accounting, and cost calculation have not been verified or implemented
-as an end-to-end capability.
+**Status:** The implementation includes control-API request instrumentation,
+configurable Tempo/Prometheus readers, and advisory budget records with optional
+observed estimated-spend queries. Gateway usage, token accounting, and cost
+calculation have not been verified as an end-to-end capability.
 
 ## Available source behavior
 
@@ -22,7 +22,8 @@ as an end-to-end capability.
 - No verified `x-agentgateway-key-id` to tenant/application attribution pipeline
   exists in this slice.
 - No inference-token totals, provider spend calculation, hard/soft budget
-  enforcement, quota alerts, or 429 budget behavior are claimed.
+  enforcement, quota alerts, or 429 budget behavior are claimed. Monthly
+  budgets and thresholds are advisory configuration only.
 - Catalog price fields, if populated, are not evidence of actual provider
   usage or incurred cost.
 

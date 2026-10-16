@@ -47,4 +47,5 @@ class ApprovalRequest(BaseModel):
     decided_by: Optional[str] = None
     decided_at: Optional[int] = None
     decision_comments: Optional[str] = None
+    applied_at: Optional[int] = None
     created_at: int

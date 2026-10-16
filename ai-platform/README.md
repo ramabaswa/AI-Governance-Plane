@@ -7,19 +7,23 @@ the Control API is not an inference proxy.
 
 ## Implementation status
 
-The repository contains an initial A–F control-plane implementation using
-PostgreSQL-compatible SQLAlchemy persistence, generic OIDC verification,
-Kubernetes server-side apply for agentgateway resources, and OTel/Tempo/
-Prometheus integrations. Its unit and integration tests, database migration,
-Kubernetes resources, and telemetry behavior have **not been run or verified
-against a live environment**. Local Compose does not include an agentgateway
-runtime. Do not treat API write acknowledgements or this documentation as
-proof that a gateway accepted a configuration or served a request.
+The repository contains PostgreSQL-compatible SQLAlchemy persistence, generic
+OIDC verification, Kubernetes server-side apply for agentgateway resources,
+and OTel/Tempo/Prometheus integrations. Durable approval and onboarding
+workflows, MCP server/tool registry, advisory budgets, route policy revision
+history, and read-only operations observations are also available in source.
+Unit and integration tests, database migrations, Kubernetes resources, and
+telemetry behavior have **not been run or verified against live services**.
+Local Compose does not include an agentgateway runtime. Do not treat API write
+acknowledgements as proof that a gateway accepted a configuration or served a
+request.
 
-MCP governance, self-service onboarding, policy approvals, budget enforcement,
-cost metering, and automated drift remediation are outside this implementation
-slice. See [MVP scope](docs/architecture/mvp-scope.md) for boundaries and
-[test traceability](docs/features/test-traceability.md) for unverified tests.
+Important limits: MCP tool policies are not published/enforced by the gateway;
+FinOps hard caps are unsupported; cost remains unknown without an explicitly
+tenant-scoped Prometheus query; operations drift checks do not remediate
+automatically; and only production application activation consumes an
+approval. See [MVP scope](docs/architecture/mvp-scope.md) and
+[test traceability](docs/features/test-traceability.md).
 
 ## Requirements
 

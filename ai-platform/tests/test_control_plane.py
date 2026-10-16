@@ -254,6 +254,59 @@ def test_production_application_cannot_skip_approval(api_client):
     assert response.json()["error"]["code"] == "APPROVAL_REQUIRED"
 
 
+def test_production_activation_requires_approved_separate_requester(api_client):
+    client, _ = api_client
+    created = client.post(
+        "/api/v1/applications",
+        headers=auth_headers(subject="dev@acme.internal"),
+        json={"name": "approved-prod-agent", "environment": "production"},
+    )
+    app_id = created.json()["data"]["application"]["id"]
+    approval = client.post(
+        "/api/v1/approvals",
+        headers=auth_headers(subject="dev@acme.internal"),
+        json={
+            "policy_type": "application_activation",
+            "target_resource_id": app_id,
+            "target_environment": "production",
+            "change_summary": "Approve production activation",
+            "proposed_diff": "{\"lifecycle_state\":\"active\"}",
+        },
+    )
+    assert approval.status_code == 201
+    approval_id = approval.json()["id"]
+
+    self_decision = client.post(
+        f"/api/v1/approvals/{approval_id}/decide",
+        headers=auth_headers(subject="dev@acme.internal"),
+        json={"decision": "approved"},
+    )
+    assert self_decision.status_code == 403
+
+    approved = client.post(
+        f"/api/v1/approvals/{approval_id}/decide",
+        headers=auth_headers(subject="admin@acme.internal"),
+        json={"decision": "approved"},
+    )
+    assert approved.status_code == 200
+    activated = client.post(
+        f"/api/v1/applications/{app_id}/lifecycle",
+        headers=auth_headers(subject="admin@acme.internal"),
+        json={"target_state": "active", "approval_request_id": approval_id},
+    )
+    assert activated.status_code == 200
+    data = activated.json()["data"]
+    assert data["application"]["lifecycle_state"] == "active"
+    assert data["virtual_key"].startswith("agw_live_")
+
+    used_again = client.post(
+        f"/api/v1/applications/{app_id}/lifecycle",
+        headers=auth_headers(subject="admin@acme.internal"),
+        json={"target_state": "active", "approval_request_id": approval_id},
+    )
+    assert used_again.status_code == 409
+
+
 def test_duplicate_route_conflicts_and_validation_only_emits_candidate_resources(api_client):
     client, _ = api_client
     headers = auth_headers()
@@ -361,9 +414,13 @@ def test_audit_chain_detects_mutated_event_details(api_client):
         assert verify_chain(session, tenant_id="tenant-acme") is False
 
 
-def test_openapi_excludes_deferred_features_and_inference_proxy(api_client):
+def test_openapi_exposes_governance_routes_without_inference_proxy(api_client):
     client, _ = api_client
     paths = client.get("/openapi.json").json()["paths"]
     assert "/v1/chat/completions" not in paths
-    assert not any(path.startswith("/api/v1/mcp") for path in paths)
-    assert not any(path.startswith("/api/v1/approvals") for path in paths)
+    assert "/api/v1/approvals" in paths
+    assert "/api/v1/finops/budgets" in paths
+    assert "/api/v1/mcp/servers" in paths
+    assert "/api/v1/onboarding/requests" in paths
+    assert "/api/v1/operations/drift" in paths
+    assert "/api/v1/policies/routes/{route_id}/revisions" in paths

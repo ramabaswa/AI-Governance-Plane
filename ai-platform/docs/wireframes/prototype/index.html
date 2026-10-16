@@ -33,9 +33,9 @@
         <li><button class="nav-item" data-screen="audit">Audit events <span>SCR-011</span></button></li>
         <li><button class="nav-item" data-screen="status">Runtime status <span>SCR-012</span></button></li>
       </ul>
-      <div class="nav-section">DEFERRED</div>
+      <div class="nav-section">WORKFLOWS</div>
       <ul class="nav-links">
-        <li><button class="nav-item" data-screen="deferred">Onboarding · approvals · budgets</button></li>
+        <li><button class="nav-item" data-screen="workflows">Onboarding · approvals · budgets</button></li>
       </ul>
       <div class="nav-footer">
         <div class="user-info">
@@ -89,7 +89,7 @@
           <div class="section-header"><div><h2>Applications <span class="tag">SCR-003 · F-002</span></h2><p class="subtitle">Tenant ownership is derived from authenticated membership, not a client-supplied tenant ID.</p></div></div>
           <div class="card">
             <p>No application data is connected.</p>
-            <p class="subtitle mt-2">A real registration flow must show an explicit lifecycle state. Credential reveal is shown only after secure one-time issuance is implemented.</p>
+            <p class="subtitle mt-2">The separate API console supports eligible one-time issuance and approved production activation. This static prototype does not connect to it.</p>
             <button class="btn btn-primary mt-3" data-action="preview">Preview registration state</button>
           </div>
         </section>
@@ -113,7 +113,7 @@
               <div class="pipe-step">Observed or rejected</div>
             </div>
             <p class="mt-3">A Kubernetes write acknowledgement is not runtime confirmation. No direct gateway admin apply endpoint is represented here.</p>
-            <p class="subtitle mt-2">Rollback and production promotion are deferred.</p>
+            <p class="subtitle mt-2">The API stores checksummed route revisions and can submit a rollback; live controller behavior is unverified. Production application activation has a separate approval workflow.</p>
             <button class="btn btn-primary mt-3" data-action="preview">Preview validation state</button>
           </div>
         </section>
@@ -122,7 +122,7 @@
           <div class="section-header"><div><h2>MCP governance <span class="tag">SCR-007 · F-007</span></h2><p class="subtitle">Discovery and authorization require a real MCP server and pinned gateway integration.</p></div></div>
           <div class="card">
             <p>No MCP server is connected; no tools have been discovered.</p>
-            <p class="subtitle mt-2">The prototype cannot test `tools/list` visibility or `tools/call` enforcement.</p>
+            <p class="subtitle mt-2">The API can discover tools from an allowlisted server and store policy intent. Policies are not published to or enforced by agentgateway. This prototype cannot test `tools/list` visibility or `tools/call` enforcement.</p>
             <button class="btn btn-primary mt-3" data-action="preview">Preview discovery states</button>
           </div>
         </section>
@@ -134,25 +134,26 @@
 
         <section id="screen-audit" class="view-section">
           <div class="section-header"><div><h2>Audit events <span class="tag">SCR-011 · F-012</span></h2><p class="subtitle">Durable management events, tenant-scoped and secret-redacted.</p></div></div>
-          <div class="card"><p>No durable audit store is connected.</p><p class="subtitle mt-2">The current in-memory hash chain is not presented as a compliance ledger or signed export.</p></div>
+          <div class="card"><p>No API or durable audit store is connected to this static prototype.</p><p class="subtitle mt-2">Persistent audit source exists in the API, but this is not presented as a compliance ledger or signed export.</p></div>
         </section>
 
         <section id="screen-status" class="view-section">
           <div class="section-header"><div><h2>Runtime status <span class="tag">SCR-012 · F-013</span></h2><p class="subtitle">Read actual Kubernetes resource/controller conditions.</p></div></div>
-          <div class="card"><span class="status-badge">Unknown</span><p class="mt-2">No controller status source is connected. No forced reconciliation is available in this MVP.</p></div>
+          <div class="card"><span class="status-badge">Unknown</span><p class="mt-2">No controller status source is connected to this static prototype. The API exposes read-only route observations; it does not reconcile or remediate drift.</p></div>
         </section>
 
-        <section id="screen-deferred" class="view-section">
-          <div class="section-header"><div><h2>Deferred capabilities</h2></div></div>
+        <section id="screen-workflows" class="view-section">
+          <div class="section-header"><div><h2>API-backed workflows <span class="tag">Static prototype only</span></h2></div></div>
           <div class="card deferred-card">
-            <h3>Not available in the proposed MVP</h3>
+            <h3>Available in the separate API console; not connected here</h3>
             <ul>
-              <li>Self-service onboarding wizard (F-003)</li>
-              <li>HITL approval queue and production promotion (F-008)</li>
-              <li>Budgets, hard caps, and cost projections (F-011)</li>
-              <li>Rollback and automated drift remediation (F-009/F-013)</li>
+              <li>Self-service onboarding submission, review, and requester completion (F-003)</li>
+              <li>Tenant-scoped approval decisions; only matching production application activation consumes approval (F-008)</li>
+              <li>Advisory budgets and observed Prometheus spend when configured; no runtime hard caps (F-011)</li>
+              <li>Checksummed route revisions and rollback submission; no guaranteed recovery (F-009)</li>
+              <li>Read-only operational drift observations; no automated remediation (F-013)</li>
             </ul>
-            <p class="subtitle mt-3">No action on this page changes platform or gateway state.</p>
+            <p class="subtitle mt-3">This page is illustrative and no action changes platform or gateway state.</p>
           </div>
         </section>
       </div>

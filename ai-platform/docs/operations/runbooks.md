@@ -27,9 +27,37 @@ validated in a running environment.
 4. Preserve the distinction between a desired resource, Kubernetes write
    acknowledgement, controller status, and successful inference. A successful
    write alone does not establish an active gateway configuration.
-5. Do not call a gateway `/config/apply` or `/status` admin endpoint; that is
-   not the configured integration path. No force-reconcile or drift API is
-   mounted.
+5. Use `GET /api/v1/operations/drift` for a read-only tenant-scoped
+   controller-status comparison. It does not repair drift. Do not call a
+   gateway `/config/apply` or `/status` admin endpoint; that is not the
+   configured integration path.
+
+## Approval or onboarding request
+
+1. Read the request in the caller's authorized tenant.
+2. Verify the target resource and proposed change independently before
+   approving; requesters cannot decide their own requests.
+3. Production application activation must reference a matching approved
+   `application_activation` request. Approval IDs are single-use.
+4. If catalog provisioning fails, review the returned error and key status;
+   do not treat a failed or cleanup-pending credential as active.
+
+## MCP discovery
+
+1. Confirm the hostname exactly matches an entry in `MCP_ALLOWED_HOSTS`.
+2. Confirm outbound network policy independently blocks unapproved/private
+   destinations and redirects; the allowlist is not a firewall.
+3. Check the discovery response and stored timestamp. A stored tool policy is
+   not applied to agentgateway and does not authorize a tool call.
+
+## FinOps data
+
+1. Verify `PROMETHEUS_QUERY_URL` and the
+   `PROMETHEUS_ESTIMATED_COST_QUERY` are configured for a month-to-date,
+   tenant-scoped metric.
+2. Treat absent samples or sources as unknown, never as zero spend.
+3. Budget thresholds are advisory. Attempts to enable hard caps are rejected;
+   runtime hard-cap enforcement is not available.
 
 ## Telemetry unavailable
 

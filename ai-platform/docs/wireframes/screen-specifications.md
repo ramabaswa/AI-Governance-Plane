@@ -39,17 +39,18 @@
 - **Features:** F-002. **Roles:** Developer (own registrations), tenant administrator, authorized platform administrator, read-only auditor.
 - **Goal:** List and register tenant-owned applications and inspect their truthful provisioning status.
 - **Fields:** Name; optional description; environment. Tenant is derived from identity, not editable.
-- **Actions:** List, create, inspect. Eligible non-production registrations reveal a credential once; production registrations remain drafts without credentials while approvals are deferred.
+- **Actions:** List, create, inspect. Eligible non-production registrations reveal a credential once; production activation requires a separately approved matching request and reveals a credential only once after catalog provisioning.
 - **API surface:** Current `GET/POST /api/v1/applications`, `GET /api/v1/applications/{app_id}`, and `POST /api/v1/applications/{app_id}/lifecycle`.
 - **States:** Loading; empty; create form; field validation errors; duplicate/conflict; pending provisioning; observed; failed; forbidden; service unavailable.
 - **Audit:** Record successful/failed management mutation according to the durable-audit design; redact credential material.
 
-### SCR-004 — Self-service onboarding (deferred)
+### SCR-004 — Self-service onboarding
 
-- **Features:** F-003. **Disposition:** Not in the approved MVP.
-- **UI:** Either hide from active navigation or show a read-only “Not available in this MVP” page. Do not present a wizard that appears to issue keys, select quotas, or complete provisioning.
-- **Current API:** No onboarding endpoint is mounted in the active API.
-- **States:** Deferred only.
+- **Features:** F-003. **Roles:** Tenant members may submit and complete their own requests; tenant administrators review requests.
+- **UI:** Request application name, environment, requested model names and quota; show reviewer outcome and completion status.
+- **API:** `POST /api/v1/onboarding/requests`, tenant-scoped list, reviewer endpoint and requester-only completion endpoint.
+- **States:** Pending review; approved; denied; completed; provisioning failure; already completed.
+- **Credential:** Only the requester receives a one-time eligible credential. If the response is lost, the key cannot be recovered; follow key revocation/replacement controls.
 
 ### SCR-005 — Models and providers
 
@@ -66,28 +67,29 @@
 - **Features:** F-005, F-006, partial F-009. **Roles:** Tenant administrator/platform operator can manage assigned test scope; developer/auditor read-only as authorized.
 - **Goal:** Validate a supported route and optional OSS regex policy, preview generated resources, submit desired state, and view controller-observed status.
 - **Fields:** Resource/route name; path/match; approved backend reference; supported policy fields; target test environment. Validate URL/path and exact pinned CRD schema. Reject unsupported policy fields instead of dropping them silently.
-- **Actions:** Edit draft; validate; inspect proposed `Gateway`, `HTTPRoute`, `AgentgatewayBackend`/`AgentgatewayPolicy` resources; submit to Kubernetes API. Do not expose a direct agentgateway admin apply action. No rollback or production promotion action in MVP.
+- **Actions:** Edit draft; validate; inspect proposed `Gateway`, `HTTPRoute`, `AgentgatewayBackend`/`AgentgatewayPolicy` resources; submit to Kubernetes API. Do not expose a direct agentgateway admin apply action. Revision history and explicit rollback are available in source; live behavior is unverified.
 - **API surface:** `GET/POST /api/v1/routes`, `POST /api/v1/routes/validate`, `POST /api/v1/routes/{route_id}/apply`, and route status read-back are present in source; live Kubernetes/CRD compatibility is unverified.
 - **States:** Draft; validating; validation failed; ready to submit; Kubernetes write pending/failed; controller reconciling; observed; rejected; status unavailable; stale observed revision.
 - **Status labels:** “Observed active” only when the exact target resource and requested revision have verified controller conditions/read-back. Otherwise pending/unknown/error.
 - **Audit:** Record actor, tenant, resource, change summary, request/correlation ID, and outcome; exclude credentials and inference content.
 
-### SCR-007 — MCP governance (deferred)
+### SCR-007 — MCP governance
 
 - **Features:** F-007. **Roles:** Tenant administrator/platform operator can manage assigned test scope; developer/auditor read-only as authorized.
-- **Goal:** Not available in the active A–F implementation.
-- **Fields:** Server name, validated endpoint, transport, authorized policy criteria. Prevent unsafe server URL/network access; validate expression syntax against pinned runtime behavior.
-- **Actions:** Register; discover real tools; apply policy through Kubernetes resources; view timestamps and allow/deny test outcomes from requests sent through agentgateway.
-- **API surface:** No MCP router is mounted in the active API.
-- **States:** Empty; discovering; discovered; timeout/transport/auth error; invalid policy; apply pending/observed/rejected; allowed; denied; unexpected runtime result.
-- **Compatibility warning:** Do not promise that denied tools disappear from `tools/list` until that behavior is tested on the pinned OSS version. Authorization of `tools/call` and visibility from `tools/list` are separate outcomes.
+- **Goal:** Register an MCP endpoint and discover tools from a real server response; store CEL-based per-tool policy intent.
+- **Fields:** Server name, HTTPS endpoint, tool and policy. Discovery requires an exact `MCP_ALLOWED_HOSTS` match and external egress controls.
+- **Actions:** Register; discover tools; edit a tool policy. The policy is not published to or enforced by agentgateway.
+- **API surface:** `/api/v1/mcp/servers`, `/discover`, and `/policy`.
+- **States:** Unverified; discovering; discovered; transport error; invalid policy; policy stored but not enforced.
+- **Compatibility warning:** No tool-call authorization or `tools/list` filtering behavior is claimed until the gateway integration is implemented and verified.
 
-### SCR-008 — Approvals (deferred)
+### SCR-008 — Approvals
 
-- **Features:** F-008. **Disposition:** Not in the approved MVP.
-- **UI:** Hide from active navigation or show “Not available in this MVP”; no approve/deny buttons and no fake approval count.
-- **Current API:** No approval router is mounted in the active API.
-- **States:** Deferred only.
+- **Features:** F-008. **Roles:** Authorized tenant/platform requesters and separate approvers.
+- **UI:** Display request scope, requester, proposal, decision and whether an approved request was applied.
+- **API:** `/api/v1/approvals` for tenant-scoped request/list/decision operations.
+- **States:** Pending; approved; denied; applied; conflict; unauthorized. A requester cannot decide their own request.
+- **Boundary:** Only matching production application activation consumes an approval. Other request types are not automatically executed; no quorum or escalation is implemented.
 
 ### SCR-009 — Traces and usage
 
@@ -99,13 +101,13 @@
 - **States:** Loading; results; empty; partial fields; stale; telemetry backend unavailable; forbidden.
 - **Audit/privacy:** Do not store secrets or raw sensitive inference payloads in the UI by default.
 
-### SCR-010 — Budgets and cost (deferred)
+### SCR-010 — Budgets and cost
 
-- **Features:** F-011. **Disposition:** Not in the OSS MVP.
-- **UI:** Hide from active navigation or show “Not available in this MVP.” No budget editor, spend gauge, hard-cap toggle, or projected cost.
-- **Reason:** Referenced `EnterpriseAgentgatewayBudget` behavior is Enterprise-only; lab cost values are simulated. Real usage telemetry is a separate dependency.
-- **Current API:** No FinOps/budget router is mounted in the active API.
-- **States:** Deferred only.
+- **Features:** F-011. **Roles:** Tenant readers and tenant administrators.
+- **UI:** Configure advisory budget and threshold; render observed spend only when the tenant-scoped Prometheus query returns data. Missing samples remain unknown.
+- **API:** `GET/PUT /api/v1/finops/budgets`.
+- **States:** Not configured; configured; spend unavailable; query failed. Hard-cap requests are rejected because runtime cost enforcement is unavailable.
+- **Reason:** `EnterpriseAgentgatewayBudget` is Enterprise-only; no OSS hard-cap enforcement or simulated spend is claimed.
 
 ### SCR-011 — Audit events
 
@@ -119,8 +121,8 @@
 
 - **Features:** Partial F-009, F-013. **Roles:** Authorized platform/tenant administrators and read-only auditors.
 - **Goal:** Show actual Kubernetes resource/controller conditions and their observation time.
-- **Actions:** Read status only. No force-reconcile button or automatic remediation in MVP.
-- **API surface:** Route status is available through the routes API. No operations/drift or forced-reconcile router is mounted.
+- **Actions:** Read route drift/status only. No force-reconcile button or automatic remediation is implemented.
+- **API surface:** Route status and `GET /api/v1/operations/drift` are read-only.
 - **States:** Unknown; pending; observed; rejected; stale; Kubernetes/controller unavailable; forbidden.
 - **Failure behavior:** Show the resource identity and correlation ID. Never turn missing status into “in sync”.
 

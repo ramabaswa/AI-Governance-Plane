@@ -2,6 +2,8 @@ const API_BASE = '/api/v1';
 let accessToken = null;
 let tenantId = '';
 let latestCredential = '';
+let currentSubject = '';
+let currentRoles = [];
 
 document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('.nav-link').forEach(button => {
@@ -13,6 +15,16 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('model-form').addEventListener('submit', registerModel);
   document.getElementById('route-form').addEventListener('submit', registerRoute);
   document.getElementById('copy-credential').addEventListener('click', copyCredential);
+  document.getElementById('clear-credential').addEventListener('click', clearCredential);
+  document.getElementById('onboarding-form').addEventListener('submit', submitOnboarding);
+  document.getElementById('approval-form').addEventListener('submit', submitApproval);
+  document.getElementById('activation-form').addEventListener('submit', activateProductionApplication);
+  document.getElementById('mcp-form').addEventListener('submit', registerMcpServer);
+  document.getElementById('mcp-policy-form').addEventListener('submit', saveMcpPolicy);
+  document.getElementById('budget-form').addEventListener('submit', saveBudget);
+  document.getElementById('refresh-drift').addEventListener('click', loadOperations);
+  document.getElementById('revisions-form').addEventListener('submit', loadRevisions);
+  document.getElementById('rollback-button').addEventListener('click', rollbackRevision);
   renderEmptyTables();
 });
 
@@ -53,12 +65,16 @@ async function signIn(event) {
   document.getElementById('access-token').value = '';
   try {
     const payload = await apiRequest('/auth/me');
+    currentSubject = payload.data.subject;
+    currentRoles = payload.data.roles || [];
     document.getElementById('auth-status').textContent =
-      `Authenticated as ${payload.data.subject} in tenant ${payload.data.tenant_id}.`;
+      `Authenticated as ${currentSubject} in tenant ${payload.data.tenant_id}.`;
     tenantId = payload.data.tenant_id;
     await refreshAll();
   } catch (error) {
     accessToken = null;
+    currentSubject = '';
+    currentRoles = [];
     document.getElementById('auth-status').textContent = 'Authentication failed.';
     showNotice(error.message);
   }
@@ -69,20 +85,32 @@ async function refreshAll() {
     showNotice('Authenticate with the configured OIDC provider before loading tenant data.');
     return;
   }
-  await Promise.all([
-    loadApplications(),
-    loadModels(),
-    loadRoutes(),
-    loadTraces(),
-    loadMetrics(),
-    loadAudit(),
-  ]);
+  const loaders = [
+    loadApplications,
+    loadModels,
+    loadRoutes,
+    loadTraces,
+    loadMetrics,
+    loadAudit,
+    loadOnboarding,
+    loadApprovals,
+    loadMcpServers,
+    loadBudget,
+    loadOperations,
+  ];
+  const results = await Promise.allSettled(loaders.map(load => load()));
+  const failures = results
+    .map((result, index) => result.status === 'rejected'
+      ? `${loaders[index].name}: ${result.reason.message || 'Request failed'}`
+      : null)
+    .filter(Boolean);
+  if (failures.length) showNotice(`Some sources could not be loaded: ${failures.join('; ')}`);
 }
 
 async function loadApplications() {
   const applications = await apiRequest('/applications');
   renderRows('applications-table', applications, app => [
-    app.name, app.environment, app.allowed_models.join(', ') || 'No models',
+    app.name, app.id, app.environment, app.allowed_models.join(', ') || 'No models',
     app.lifecycle_state, app.virtual_key_prefix || 'None',
   ]);
   document.getElementById('overview-apps').textContent = String(applications.length);
@@ -181,16 +209,15 @@ async function registerApplication(event) {
       }),
     });
     latestCredential = payload.data.virtual_key || '';
-    document.getElementById('credential-value').textContent = latestCredential
-      || 'No credential issued; production approval is not available in this MVP.';
-    document.getElementById('credential-state').textContent =
-      `Credential catalog state: ${payload.data.credential_state}; gateway observation: ${payload.data.gateway_observation}.`;
-    document.getElementById('credential-result').hidden = false;
+    showCredential(
+      latestCredential,
+      `Credential catalog state: ${payload.data.credential_state}; gateway observation: ${payload.data.gateway_observation}.`,
+    );
     event.target.reset();
     await loadApplications();
     showNotice(latestCredential
       ? 'Application registered. Copy the credential now; it will not be shown again.'
-      : 'Production application saved as a draft. No credential was issued.');
+      : 'Production application saved as a draft. Request approval before activation.');
   } catch (error) {
     showNotice(error.message);
   }
@@ -282,6 +309,336 @@ async function copyCredential() {
   }
 }
 
+function clearCredential() {
+  latestCredential = '';
+  document.getElementById('credential-value').textContent = '';
+  document.getElementById('credential-result').hidden = true;
+}
+
+function showCredential(key, state) {
+  latestCredential = key || '';
+  document.getElementById('credential-value').textContent =
+    latestCredential || 'No credential was issued.';
+  document.getElementById('credential-state').textContent = state;
+  document.getElementById('credential-result').hidden = false;
+}
+
+async function submitOnboarding(event) {
+  event.preventDefault();
+  try {
+    await apiRequest('/onboarding/requests', {
+      method: 'POST',
+      body: JSON.stringify({
+        application_name: document.getElementById('onboarding-name').value,
+        environment: document.getElementById('onboarding-environment').value,
+        requested_models: splitList(document.getElementById('onboarding-models').value),
+        monthly_token_quota: Number(document.getElementById('onboarding-quota').value),
+      }),
+    });
+    event.target.reset();
+    await loadOnboarding();
+    showNotice('Onboarding request submitted for review.');
+  } catch (error) {
+    showNotice(error.message);
+  }
+}
+
+async function loadOnboarding() {
+  const requests = await apiRequest('/onboarding/requests');
+  renderRows('onboarding-table', requests, request => [
+    request.application_name,
+    request.environment,
+    request.requested_by,
+    request.status,
+    request.application_id || '—',
+    '',
+  ], (row, request) => {
+    const action = row.lastElementChild;
+    if (request.status === 'pending' && request.requested_by !== currentSubject && canReview()) {
+      action.append(
+        makeButton('Approve', () => reviewOnboarding(request.id, 'approved')),
+        makeButton('Deny', () => reviewOnboarding(request.id, 'denied')),
+      );
+    } else if (request.status === 'approved' && request.requested_by === currentSubject) {
+      action.append(makeButton('Complete', () => completeOnboarding(request.id)));
+    }
+  });
+}
+
+async function reviewOnboarding(requestId, decision) {
+  try {
+    await apiRequest(`/onboarding/requests/${encodeURIComponent(requestId)}/review`, {
+      method: 'POST',
+      body: JSON.stringify({ decision }),
+    });
+    await loadOnboarding();
+    showNotice(`Onboarding request ${decision}.`);
+  } catch (error) {
+    showNotice(error.message);
+  }
+}
+
+async function completeOnboarding(requestId) {
+  try {
+    const payload = await apiRequest(`/onboarding/requests/${encodeURIComponent(requestId)}/complete`, {
+      method: 'POST',
+    });
+    showCredential(
+      payload.data.virtual_key,
+      `Credential state: ${payload.data.credential_state}. Application ID: ${payload.data.request.application_id}.`,
+    );
+    await loadOnboarding();
+    showNotice(payload.data.virtual_key
+      ? 'Onboarding completed. Copy the credential now; it cannot be shown again.'
+      : 'Production onboarding completed. Request a separate activation approval.');
+  } catch (error) {
+    showNotice(error.message);
+  }
+}
+
+async function submitApproval(event) {
+  event.preventDefault();
+  try {
+    await apiRequest('/approvals', {
+      method: 'POST',
+      body: JSON.stringify({
+        policy_type: document.getElementById('approval-type').value,
+        target_resource_id: document.getElementById('approval-resource').value,
+        target_environment: 'production',
+        change_summary: document.getElementById('approval-summary').value,
+        proposed_diff: document.getElementById('approval-diff').value,
+      }),
+    });
+    event.target.reset();
+    await loadApprovals();
+    showNotice('Approval request submitted.');
+  } catch (error) {
+    showNotice(error.message);
+  }
+}
+
+async function loadApprovals() {
+  const approvals = await apiRequest('/approvals');
+  renderRows('approvals-table', approvals, approval => [
+    `${approval.policy_type} / ${approval.target_resource_id}`,
+    approval.requested_by,
+    approval.status,
+    approval.decision_comments || '—',
+    '',
+  ], (row, approval) => {
+    if (approval.status !== 'pending' || approval.requested_by === currentSubject || !canReview()) return;
+    const action = row.lastElementChild;
+    action.append(
+      makeButton('Approve', () => decideApproval(approval.id, 'approved')),
+      makeButton('Deny', () => decideApproval(approval.id, 'denied')),
+    );
+  });
+}
+
+async function decideApproval(requestId, decision) {
+  try {
+    await apiRequest(`/approvals/${encodeURIComponent(requestId)}/decide`, {
+      method: 'POST',
+      body: JSON.stringify({ decision }),
+    });
+    await loadApprovals();
+    showNotice(`Approval request ${decision}.`);
+  } catch (error) {
+    showNotice(error.message);
+  }
+}
+
+async function activateProductionApplication(event) {
+  event.preventDefault();
+  const applicationId = document.getElementById('activation-app').value.trim();
+  try {
+    const payload = await apiRequest(`/applications/${encodeURIComponent(applicationId)}/lifecycle`, {
+      method: 'POST',
+      body: JSON.stringify({
+        target_state: 'active',
+        approval_request_id: document.getElementById('activation-approval').value.trim(),
+      }),
+    });
+    showCredential(
+      payload.data.virtual_key,
+      `Gateway observation: ${payload.data.gateway_observation}. Application: ${payload.data.application.id}.`,
+    );
+    await loadApplications();
+    await loadApprovals();
+    showNotice(payload.data.virtual_key
+      ? 'Production application activated. Copy the credential now; it will not be shown again.'
+      : 'Application lifecycle updated without issuing a new credential.');
+  } catch (error) {
+    showNotice(error.message);
+  }
+}
+
+async function registerMcpServer(event) {
+  event.preventDefault();
+  try {
+    await apiRequest('/mcp/servers', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: document.getElementById('mcp-name').value,
+        transport_url: document.getElementById('mcp-url').value,
+      }),
+    });
+    event.target.reset();
+    await loadMcpServers();
+    showNotice('MCP server registered. Discovery is a separate outbound request.');
+  } catch (error) {
+    showNotice(error.message);
+  }
+}
+
+async function loadMcpServers() {
+  const servers = await apiRequest('/mcp/servers');
+  renderRows('mcp-table', servers, server => [
+    server.name,
+    server.transport_url,
+    server.discovery_state,
+    server.discovered_tools.map(tool => tool.name).join(', ') || 'Not discovered',
+    server.policy_enforcement_state,
+    '',
+  ], (row, server) => {
+    row.lastElementChild.append(
+      makeButton('Discover tools', () => discoverMcpServer(server.id)),
+      makeButton('Use server ID', () => {
+        document.getElementById('mcp-policy-server').value = server.id;
+      }),
+    );
+  });
+}
+
+async function discoverMcpServer(serverId) {
+  try {
+    const server = await apiRequest(`/mcp/servers/${encodeURIComponent(serverId)}/discover`, {
+      method: 'POST',
+    });
+    await loadMcpServers();
+    showNotice(`Discovery ${server.discovery_state}. ${server.discovered_tools.length} tool(s) returned; gateway policy enforcement is not available.`);
+  } catch (error) {
+    showNotice(error.message);
+  }
+}
+
+async function saveMcpPolicy(event) {
+  event.preventDefault();
+  const serverId = document.getElementById('mcp-policy-server').value.trim();
+  try {
+    const server = await apiRequest(`/mcp/servers/${encodeURIComponent(serverId)}/policy`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        policy: {
+          tool_name: document.getElementById('mcp-policy-tool').value.trim(),
+          cel_rule: document.getElementById('mcp-policy-cel').value.trim(),
+          allowed_roles: splitList(document.getElementById('mcp-policy-roles').value),
+          is_enabled: true,
+        },
+      }),
+    });
+    await loadMcpServers();
+    showNotice(`Policy intent saved. Enforcement state: ${server.policy_enforcement_state}.`);
+  } catch (error) {
+    showNotice(error.message);
+  }
+}
+
+async function loadBudget() {
+  const budget = await apiRequest('/finops/budgets');
+  document.getElementById('budget-monthly').value =
+    budget.configured ? budget.monthly_budget_usd : '';
+  document.getElementById('budget-threshold').value = budget.alert_threshold_pct;
+  document.getElementById('budget-status').textContent = JSON.stringify({
+    configured: budget.configured,
+    monthly_budget_usd: budget.configured ? budget.monthly_budget_usd : 'Not configured',
+    alert_threshold_pct: budget.alert_threshold_pct,
+    observed_spend_usd: budget.current_spend_usd ?? 'Unknown',
+    spend_source: budget.spend_source,
+    hard_cap_enforcement: budget.hard_cap_enforcement,
+  }, null, 2);
+}
+
+async function saveBudget(event) {
+  event.preventDefault();
+  try {
+    await apiRequest('/finops/budgets', {
+      method: 'PUT',
+      body: JSON.stringify({
+        monthly_budget_usd: Number(document.getElementById('budget-monthly').value),
+        alert_threshold_pct: Number(document.getElementById('budget-threshold').value),
+        hard_cap_enabled: false,
+      }),
+    });
+    await loadBudget();
+    showNotice('Advisory budget saved; no runtime hard cap is enforced.');
+  } catch (error) {
+    showNotice(error.message);
+  }
+}
+
+async function loadOperations() {
+  const observations = await apiRequest('/operations/drift');
+  document.getElementById('operations-output').textContent = JSON.stringify(observations, null, 2);
+}
+
+async function loadRevisions(event) {
+  if (event) event.preventDefault();
+  const routeId = document.getElementById('revision-route').value.trim();
+  if (!routeId) return;
+  try {
+    const revisions = await apiRequest(`/policies/routes/${encodeURIComponent(routeId)}/revisions`);
+    const selector = document.getElementById('revision-source');
+    selector.replaceChildren(...revisions.map(revision => {
+      const option = document.createElement('option');
+      option.value = revision.revision;
+      option.textContent = `Revision ${revision.revision} (${revision.state}, ${revision.checksum.slice(0, 12)})`;
+      return option;
+    }));
+    document.getElementById('revisions-output').textContent = JSON.stringify(revisions, null, 2);
+    showNotice(`${revisions.length} route revision(s) loaded.`);
+  } catch (error) {
+    showNotice(error.message);
+  }
+}
+
+async function rollbackRevision() {
+  const routeId = document.getElementById('revision-route').value.trim();
+  const sourceRevision = Number(document.getElementById('revision-source').value);
+  if (!routeId || !sourceRevision) {
+    showNotice('Load revisions and select a source revision before submitting rollback.');
+    return;
+  }
+  try {
+    const payload = await apiRequest(`/policies/routes/${encodeURIComponent(routeId)}/rollback`, {
+      method: 'POST',
+      body: JSON.stringify({ source_revision: sourceRevision }),
+    });
+    await loadRevisions();
+    await loadRoutes();
+    showNotice(`Rollback submitted. Route state: ${payload.data.state}; controller observation remains separate.`);
+  } catch (error) {
+    showNotice(error.message);
+  }
+}
+
+function splitList(value) {
+  return value.split(',').map(item => item.trim()).filter(Boolean);
+}
+
+function canReview() {
+  return currentRoles.some(role => role === 'platform_admin' || role === 'tenant_admin');
+}
+
+function makeButton(label, action) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'btn btn-sm btn-outline';
+  button.textContent = label;
+  button.addEventListener('click', action);
+  return button;
+}
+
 function renderRows(tableId, records, valuesForRecord, decorateRow) {
   const body = document.getElementById(tableId);
   body.replaceChildren();
@@ -303,7 +660,8 @@ function renderRows(tableId, records, valuesForRecord, decorateRow) {
 }
 
 function renderEmptyTables() {
-  ['applications-table', 'models-table', 'routes-table', 'traces-table', 'audit-table']
+  ['applications-table', 'models-table', 'routes-table', 'traces-table', 'audit-table',
+    'onboarding-table', 'approvals-table', 'mcp-table']
     .forEach(id => renderRows(id, [], () => []));
 }
 

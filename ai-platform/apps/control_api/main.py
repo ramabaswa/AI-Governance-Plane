@@ -26,6 +26,12 @@ from apps.control_api.routers.routes_router import router as routes_router
 from apps.control_api.routers.models_router import router as models_router
 from apps.control_api.routers.audit_router import router as audit_router
 from apps.control_api.routers.observability_router import router as observability_router
+from apps.control_api.routers.approvals_router import router as approvals_router
+from apps.control_api.routers.finops_router import router as finops_router
+from apps.control_api.routers.mcp_router import router as mcp_router
+from apps.control_api.routers.onboarding_router import router as onboarding_router
+from apps.control_api.routers.operations_router import router as operations_router
+from apps.control_api.routers.policy_lifecycle_router import router as policy_lifecycle_router
 from features.database import initialize_development_schema, seed_development_data
 from integrations.observability.otel import TelemetryProviders, initialize_telemetry
 
@@ -124,6 +130,12 @@ def create_app() -> FastAPI:
     app.include_router(models_router)
     app.include_router(audit_router)
     app.include_router(observability_router)
+    app.include_router(approvals_router)
+    app.include_router(finops_router)
+    app.include_router(mcp_router)
+    app.include_router(onboarding_router)
+    app.include_router(operations_router)
+    app.include_router(policy_lifecycle_router)
 
     # Static files mount for Console UI if directory exists
     console_dir = os.path.join(os.path.dirname(__file__), "..", "console")

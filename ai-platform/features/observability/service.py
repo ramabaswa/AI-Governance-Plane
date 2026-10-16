@@ -61,6 +61,7 @@ def query_metrics(tenant_id: str) -> dict[str, Any]:
         "input_tokens": os.getenv("PROMETHEUS_INPUT_TOKENS_QUERY"),
         "output_tokens": os.getenv("PROMETHEUS_OUTPUT_TOKENS_QUERY"),
         "errors": os.getenv("PROMETHEUS_ERRORS_QUERY"),
+        "estimated_cost_usd": os.getenv("PROMETHEUS_ESTIMATED_COST_QUERY"),
     }
 
     results: dict[str, Any] = {}

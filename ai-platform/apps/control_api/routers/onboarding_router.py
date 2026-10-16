@@ -1,51 +1,98 @@
-"""Self-service onboarding request router."""
+"""Self-service application onboarding request endpoints."""
 
-from typing import List, Optional
-from pydantic import BaseModel, Field
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Path
+from sqlalchemy.orm import Session
+
+from apps.control_api.dependencies import get_agentgateway_kubernetes_client
+from features.database import get_db_session
+from features.self_service_onboarding import service
+from integrations.agentgateway.client import AgentgatewayKubernetesClient
 from shared.authorization.dependencies import (
-    get_current_user,
-    require_tenant_context,
     AuthenticatedUser,
+    require_permission,
+    require_tenant_context,
 )
-from features.state_store import STATE_STORE
+from shared.contracts.onboarding import (
+    OnboardingDecision,
+    OnboardingRequest,
+    OnboardingRequestCreate,
+)
 
 router = APIRouter(prefix="/api/v1/onboarding", tags=["Self-Service Onboarding"])
 
 
-class OnboardingRequest(BaseModel):
-    application_name: str = Field(..., min_length=2, max_length=64, pattern=r"^[a-z0-9-]+$")
-    environment: str = Field(default="development", pattern=r"^(development|staging|production)$")
-    requested_models: List[str] = Field(default_factory=list)
-    monthly_token_quota: int = Field(default=1_000_000, gt=0)
-    dlp_enable_pci: bool = True
-    dlp_enable_ssn: bool = True
-
-
-@router.post("/request")
-async def submit_onboarding_request(
-    req: OnboardingRequest,
+@router.get("/requests", response_model=list[OnboardingRequest])
+async def list_requests(
     tenant_id: str = Depends(require_tenant_context),
-    current_user: AuthenticatedUser = Depends(get_current_user),
+    user: AuthenticatedUser = Depends(require_permission("onboarding:create")),
+    session: Session = Depends(get_db_session),
 ):
-    """Process onboarding request and mint virtual key."""
-    app, raw_key = STATE_STORE.register_application(
+    return service.list_requests(
+        session,
         tenant_id=tenant_id,
-        name=req.application_name,
-        description=f"Self-service provisioned agent ({req.environment})",
-        environment=req.environment,
-        allowed_models=req.requested_models,
-        monthly_token_quota=req.monthly_token_quota,
-        created_by=current_user.subject,
+        actor=user.subject,
+        reviewer=user.has_perm("onboarding:review"),
     )
 
+
+@router.post("/requests", status_code=201, response_model=OnboardingRequest)
+async def submit_request(
+    request: OnboardingRequestCreate,
+    tenant_id: str = Depends(require_tenant_context),
+    user: AuthenticatedUser = Depends(require_permission("onboarding:create")),
+    session: Session = Depends(get_db_session),
+):
+    return service.submit_request(
+        session,
+        tenant_id=tenant_id,
+        actor=user.subject,
+        request=request,
+    )
+
+
+@router.post("/requests/{request_id}/review", response_model=OnboardingRequest)
+async def review_request(
+    decision: OnboardingDecision,
+    request_id: str = Path(...),
+    tenant_id: str = Depends(require_tenant_context),
+    user: AuthenticatedUser = Depends(require_permission("onboarding:review")),
+    session: Session = Depends(get_db_session),
+):
+    return service.review_request(
+        session,
+        tenant_id=tenant_id,
+        request_id=request_id,
+        actor=user.subject,
+        decision=decision,
+    )
+
+
+@router.post("/requests/{request_id}/complete")
+async def complete_request(
+    request_id: str = Path(...),
+    tenant_id: str = Depends(require_tenant_context),
+    user: AuthenticatedUser = Depends(require_permission("onboarding:create")),
+    kubernetes_client: AgentgatewayKubernetesClient = Depends(get_agentgateway_kubernetes_client),
+    session: Session = Depends(get_db_session),
+):
+    request, raw_key = service.complete_request(
+        session,
+        tenant_id=tenant_id,
+        request_id=request_id,
+        actor=user.subject,
+        kubernetes_client=kubernetes_client,
+    )
     return {
         "success": True,
         "data": {
-            "application_id": app.id,
-            "application_name": app.name,
-            "lifecycle_state": app.lifecycle_state.value,
+            "request": request,
             "virtual_key": raw_key,
-            "agentgateway_sample_command": f"curl -X POST http://localhost:8080/v1/chat/completions -H 'Authorization: Bearer {raw_key}'",
+            "credential_state": (
+                "catalog_configured"
+                if raw_key
+                else "not_issued_approval_required"
+                if request.environment == "production"
+                else "already_issued_once_or_response_lost"
+            ),
         },
     }

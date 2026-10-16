@@ -15,20 +15,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   schema; tenant-scoped application/model/route APIs; hashed application-key
   catalog provisioning; Kubernetes-based gateway resource translation and
   status reads; audit evidence; and OTel/Tempo/Prometheus integration points.
-- Production application records remain drafts without credentials while the
-  approval workflow is deferred; a database URL and explicit development JWT
-  secret are required in their respective non-test environments.
-- A limited console for the implemented API surfaces and focused tests for
-  identity, API behavior, translation, reconciliation, security boundaries,
-  and observability.
+- Production activation now consumes a matching approved request and issues
+  its credential only after catalog provisioning; database and development
+  token configuration remain environment-specific.
+- Tenant-scoped approval/onboarding workflows, allowlisted MCP discovery with
+  non-enforcing policy intent, advisory budgets, checksummed route revisions
+  and rollback, and read-only operations observations.
+- Console workflows for applications, onboarding, approvals, MCP, budgets,
+  policy revisions, and operations, plus focused source tests for governance
+  capabilities.
 - Local Compose and Kubernetes configuration for the API, database, console,
   telemetry components, and scoped Kubernetes writer role.
 
-### Deferred and unverified
+### Unverified and unavailable behavior
 - This is not a verified release. Tests, builds, migrations, container startup,
   browser behavior, Kubernetes/CRD compatibility, and live integrations have
   not been executed for this handoff.
-- MCP governance, onboarding, approvals, budgets/cost metering, and automated
-  drift remediation are not part of this implementation slice.
+- MCP policies are not gateway-enforced; FinOps hard caps and automated drift
+  remediation are unavailable. Generic approval request types are not generic
+  mutation executors.
 - Local Compose does not include agentgateway; no end-to-end inference request
   or gateway enforcement claim is made.

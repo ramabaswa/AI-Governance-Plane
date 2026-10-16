@@ -35,5 +35,7 @@ class MCPServer(BaseModel):
     discovered_tools: List[MCPTool] = Field(default_factory=list)
     policies: List[MCPToolPolicy] = Field(default_factory=list)
     is_connected: bool = False
+    discovery_state: str = "unverified"
+    policy_enforcement_state: str = "not_published_to_gateway"
     created_at: int
     updated_at: int
